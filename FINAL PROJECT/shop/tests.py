@@ -1,0 +1,741 @@
+import json
+import os
+import uuid
+from decimal import Decimal
+from unittest.mock import Mock, patch
+
+import requests
+
+from django.contrib.auth import get_user_model
+from django.contrib.admin.sites import AdminSite
+from django.test import Client, RequestFactory, TestCase
+from django.urls import reverse
+
+from .admin import OrderAdmin
+from .models import (
+    Category,
+    Customer,
+    Order,
+    OrderItem,
+    PaymentTransaction,
+    Product,
+    Review,
+    SiteSettings,
+    SocialMediaLink,
+)
+
+
+User = get_user_model()
+
+
+class ShopTestCase(TestCase):
+    def setUp(self):
+        self.category = Category.objects.create(name="Accessories")
+        self.product = Product.objects.create(
+            category=self.category,
+            name="Leather Bag",
+            description="Hand-finished leather bag",
+            price=Decimal("1250.00"),
+            stock=10,
+        )
+        self.site_settings = SiteSettings.objects.create(
+            whatsapp_number="+234 801-234-5678",
+            whatsapp_enabled=True,
+            telegram_username="@annelsa_store",
+            telegram_enabled=True,
+            payment_method="contact",
+            paystack_test_mode=True,
+            currency="NGN",
+        )
+        self.checkout_key = uuid.uuid4().hex
+        self.order_payload = {
+            "customer_name": "Test Buyer",
+            "phone": "+2348012345678",
+            "email": "buyer@example.com",
+            "location": "Lagos",
+            "address": "10 Test Street",
+            "cart_data": json.dumps(
+                [{"id": self.product.id, "quantity": 2, "price": "0.01"}]
+            ),
+            "checkout_key": self.checkout_key,
+            "contact_method": "whatsapp",
+        }
+
+
+class CatalogTests(ShopTestCase):
+    def test_home_displays_product_details_and_real_category_id(self):
+        response = self.client.get(reverse("home"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Leather Bag")
+        self.assertContains(response, "Hand-finished leather bag")
+        self.assertContains(
+            response,
+            f"data-product-category=\"{self.category.id}\"",
+        )
+        self.assertContains(response, "10 in stock")
+
+    def test_home_offers_both_configured_contact_channels(self):
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(response, 'value="whatsapp">WhatsApp</option>')
+        self.assertContains(response, 'value="telegram">Telegram</option>')
+
+    def test_footer_shows_active_social_media_links(self):
+        social_link = SocialMediaLink.objects.create(
+            platform="instagram",
+            name="Instagram",
+            url="https://instagram.com/example",
+            is_active=True,
+        )
+
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(response, social_link.url)
+        self.assertContains(response, social_link.name)
+
+    def test_search_empty_state_is_available_for_empty_catalog(self):
+        Product.objects.all().delete()
+
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(response, 'id="productSearchEmptyState"')
+        self.assertContains(
+            response,
+            "No products found matching your search. Please try another keyword!",
+        )
+
+    def test_empty_catalog_message_requires_a_search_query(self):
+        Product.objects.all().delete()
+        empty_block_marker = (
+            '<div class="glass-card product-card empty-products">'
+        )
+
+        homepage_response = self.client.get(reverse("home"))
+        homepage_empty_block = (
+            homepage_response.content.decode()
+            .split(empty_block_marker, 1)[1]
+            .split("</div>", 1)[0]
+        )
+        self.assertEqual(homepage_response.context["query"], "")
+        self.assertNotIn(
+            "No products found matching your search.",
+            homepage_empty_block,
+        )
+
+        search_response = self.client.get(reverse("home"), {"q": "missing"})
+        search_empty_block = (
+            search_response.content.decode()
+            .split(empty_block_marker, 1)[1]
+            .split("</div>", 1)[0]
+        )
+        self.assertEqual(search_response.context["query"], "missing")
+        self.assertIn(
+            "No products found matching your search. Please try another keyword!",
+            search_empty_block,
+        )
+
+    def test_admin_registers_product_category_orders_and_reviews(self):
+        from django.contrib import admin
+
+        for model in (Product, Category, Order, Review):
+            self.assertIn(model, admin.site._registry)
+        settings_admin = admin.site._registry[SiteSettings]
+        self.assertIn(
+            "payment_method",
+            [
+                field
+                for _, options in settings_admin.fieldsets
+                for field in options["fields"]
+            ],
+        )
+        social_admin = admin.site._registry[SocialMediaLink]
+        self.assertIn("footer", social_admin.fieldsets[0][0].lower())
+
+
+class OrderPickupVerificationTests(ShopTestCase):
+    def test_paid_order_transition_generates_unique_pickup_code(self):
+        order = Order.objects.create(
+            customer=Customer.objects.create(name="Pickup Customer"),
+            total=Decimal("100.00"),
+        )
+        self.assertIsNone(order.verification_code)
+        self.assertFalse(order.is_delivered)
+
+        order.status = "confirmed"
+        order.save(update_fields=["status", "updated_at"])
+        order.refresh_from_db()
+
+        self.assertRegex(order.verification_code, r"^PICK-\d{6}$")
+        self.assertEqual(
+            Order.objects.filter(
+                verification_code=order.verification_code,
+            ).count(),
+            1,
+        )
+
+    def test_already_paid_order_without_status_transition_gets_no_new_code(self):
+        order = Order.objects.create(
+            customer=Customer.objects.create(name="Pickup Customer"),
+            total=Decimal("100.00"),
+            status="confirmed",
+        )
+        code = order.verification_code
+
+        order.additional_note = "Customer requested gift wrapping."
+        order.save(update_fields=["additional_note"])
+        order.refresh_from_db()
+
+        self.assertEqual(order.verification_code, code)
+        self.assertRegex(order.verification_code, r"^PICK-\d{6}$")
+
+
+class CheckoutTests(ShopTestCase):
+    def test_whatsapp_checkout_creates_order_and_decrements_stock(self):
+        response = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "redirect")
+        self.assertIn("wa.me/2348012345678", data["redirect_url"])
+        self.assertIn("Order%20ID", data["redirect_url"])
+        self.assertIn("Test%20Buyer", data["redirect_url"])
+
+        order = Order.objects.get(pk=data["order_id"])
+        item = order.items.get()
+        self.product.refresh_from_db()
+        self.assertEqual(order.total, Decimal("2500.00"))
+        self.assertEqual(item.price, Decimal("1250.00"))
+        self.assertEqual(item.quantity, 2)
+        self.assertEqual(self.product.stock, 8)
+        self.assertEqual(order.customer.email, "buyer@example.com")
+
+    def test_telegram_checkout_redirects_to_saved_username_with_receipt(self):
+        self.order_payload["contact_method"] = "telegram"
+
+        response = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "redirect")
+        self.assertTrue(
+            data["redirect_url"].startswith("https://t.me/annelsa_store?")
+        )
+        self.assertIn("Test%20Buyer", data["redirect_url"])
+        self.assertIn("Leather%20Bag", data["redirect_url"])
+        self.assertIn("NGN%202%2C500.00", data["redirect_url"])
+
+    def test_checkout_rejects_disabled_contact_channel(self):
+        self.site_settings.telegram_enabled = False
+        self.site_settings.save(update_fields=["telegram_enabled"])
+        self.order_payload["contact_method"] = "telegram"
+
+        response = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_duplicate_cart_lines_are_aggregated_before_stock_check(self):
+        self.product.stock = 4
+        self.product.save(update_fields=["stock"])
+        self.order_payload["cart_data"] = json.dumps(
+            [
+                {"id": self.product.id, "quantity": 3},
+                {"id": self.product.id, "quantity": 2},
+            ]
+        )
+
+        response = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Only 4 unit(s)", response.json()["message"])
+        self.assertEqual(Order.objects.count(), 0)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 4)
+
+    def test_repeated_checkout_key_does_not_create_second_order(self):
+        first = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+        second = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(Order.objects.count(), 1)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 8)
+
+    def test_checkout_rejects_invalid_cart_without_creating_order(self):
+        self.order_payload["cart_data"] = "not-json"
+
+        response = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_missing_messaging_configuration_does_not_reserve_stock(self):
+        self.site_settings.whatsapp_enabled = False
+        self.site_settings.whatsapp_number = ""
+        self.site_settings.save()
+
+        response = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 10)
+
+    def test_checkout_requires_post(self):
+        response = self.client.get(reverse("create_order"))
+        self.assertEqual(response.status_code, 405)
+
+    def test_checkout_requires_csrf_token(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        response = csrf_client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+        self.assertEqual(response.status_code, 403)
+
+    @patch.dict(os.environ, {"PAYSTACK_TEST_SECRET_KEY": "sk_test_example"})
+    @patch("shop.views.requests.post")
+    def test_paystack_initialization_uses_mode_secret_and_server_total(
+        self,
+        post_request,
+    ):
+        self.site_settings.payment_method = "paystack"
+        self.site_settings.save()
+        second_product = Product.objects.create(
+            category=self.category,
+            name="Canvas Tote",
+            description="A durable canvas tote",
+            price=Decimal("300.00"),
+            stock=5,
+        )
+        self.order_payload["cart_data"] = json.dumps(
+            [
+                {"id": self.product.id, "quantity": 2, "price": "0.01"},
+                {"id": second_product.id, "quantity": 1, "price": "0.01"},
+            ]
+        )
+        gateway_response = Mock()
+        gateway_response.json.return_value = {
+            "status": True,
+            "data": {"authorization_url": "https://checkout.example/authorize"},
+        }
+        post_request.return_value = gateway_response
+
+        response = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "paystack")
+        post_request.assert_called_once()
+        self.assertEqual(
+            post_request.call_args.kwargs["headers"]["Authorization"],
+            "Bearer sk_test_example",
+        )
+        self.assertEqual(
+            post_request.call_args.kwargs["json"]["amount"],
+            280000,
+        )
+        self.assertEqual(
+            post_request.call_args.kwargs["json"]["metadata"]["custom_fields"],
+            [
+                {
+                    "display_name": "Item 1",
+                    "variable_name": "item_1",
+                    "value": "Leather Bag x 2",
+                },
+                {
+                    "display_name": "Item 2",
+                    "variable_name": "item_2",
+                    "value": "Canvas Tote x 1",
+                },
+            ],
+        )
+        payment = PaymentTransaction.objects.get()
+        self.assertEqual(payment.amount, Decimal("2800.00"))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 8)
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_paystack_missing_secret_does_not_create_order(self):
+        self.site_settings.payment_method = "paystack"
+        self.site_settings.save()
+
+        response = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(Order.objects.count(), 0)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 10)
+
+    @patch.dict(os.environ, {"PAYSTACK_TEST_SECRET_KEY": "sk_test_example"})
+    @patch("shop.views.requests.post")
+    def test_paystack_initialization_failure_cancels_order_and_restores_stock(
+        self,
+        post_request,
+    ):
+        self.site_settings.payment_method = "paystack"
+        self.site_settings.save()
+        post_request.side_effect = requests.Timeout("gateway timeout")
+
+        response = self.client.post(
+            reverse("create_order"),
+            self.order_payload,
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(PaymentTransaction.objects.get().status, "failed")
+        self.assertEqual(Order.objects.get().status, "cancelled")
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 10)
+
+    @patch.dict(os.environ, {"PAYSTACK_TEST_SECRET_KEY": "sk_test_example"})
+    @patch("shop.views.requests.get")
+    def test_payment_callback_verifies_and_is_idempotent(self, get_request):
+        order, payment = self.create_pending_paystack_order()
+        get_request.return_value = self.gateway_verification(
+            payment,
+            status="success",
+        )
+
+        first = self.client.get(
+            reverse("paystack_callback"),
+            {"reference": payment.reference},
+        )
+        second = self.client.get(
+            reverse("paystack_callback"),
+            {"reference": payment.reference},
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertContains(first, f"Order #{order.id} is confirmed.")
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(get_request.call_count, 1)
+        payment.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(payment.status, "success")
+        self.assertEqual(order.status, "confirmed")
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 8)
+
+    @patch.dict(os.environ, {"PAYSTACK_TEST_SECRET_KEY": "sk_test_example"})
+    @patch("shop.views.requests.get")
+    def test_payment_mismatch_fails_and_restores_reserved_stock(self, get_request):
+        order, payment = self.create_pending_paystack_order()
+        get_request.return_value = self.gateway_verification(
+            payment,
+            status="success",
+            amount=1,
+        )
+
+        response = self.client.get(
+            reverse("paystack_callback"),
+            {"reference": payment.reference},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Payment could not be verified")
+        payment.refresh_from_db()
+        order.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(payment.status, "failed")
+        self.assertEqual(order.status, "cancelled")
+        self.assertEqual(self.product.stock, 10)
+
+    def create_pending_paystack_order(self):
+        order = Order.objects.create(
+            customer=Customer.objects.create(
+                name="Test Buyer",
+                phone="2348012345678",
+                email="buyer@example.com",
+                address="10 Test Street",
+                city="Lagos",
+            ),
+            total=Decimal("2500.00"),
+            status="pending",
+        )
+        self.product.stock = 8
+        self.product.save(update_fields=["stock"])
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            product_name=self.product.name,
+            price=Decimal("1250.00"),
+            quantity=2,
+        )
+        payment = PaymentTransaction.objects.create(
+            order=order,
+            reference="ANL-TEST-REFERENCE",
+            amount=Decimal("2500.00"),
+            currency="NGN",
+            status="pending",
+        )
+        self.site_settings.payment_method = "paystack"
+        self.site_settings.save()
+        return order, payment
+
+    @staticmethod
+    def gateway_verification(payment, status, amount=None):
+        response = Mock()
+        response.json.return_value = {
+            "status": True,
+            "data": {
+                "status": status,
+                "reference": payment.reference,
+                "amount": amount if amount is not None else 250000,
+                "currency": "NGN",
+            },
+        }
+        return response
+
+
+class ReviewTests(ShopTestCase):
+    def test_public_review_is_saved_for_admin_moderation(self):
+        response = self.client.post(
+            reverse("submit_review"),
+            {
+                "product_id": self.product.id,
+                "name": "Reviewer",
+                "rating": "5",
+                "comment": "A lovely product.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        review = Review.objects.get()
+        self.assertFalse(review.is_approved)
+        self.assertFalse(review.is_featured)
+        self.assertEqual(review.product, self.product)
+
+    def test_review_rejects_invalid_rating(self):
+        response = self.client.post(
+            reverse("submit_review"),
+            {
+                "product_id": self.product.id,
+                "name": "Reviewer",
+                "rating": "6",
+                "comment": "A lovely product.",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Review.objects.count(), 0)
+
+
+class AccountTests(ShopTestCase):
+    @patch.dict(
+        os.environ,
+        {
+            "FACEBOOK_CLIENT_ID": "test-facebook-client",
+            "FACEBOOK_CLIENT_SECRET": "test-facebook-secret",
+        },
+    )
+    def test_login_form_and_configured_facebook_provider_link_render(self):
+        response = self.client.get(reverse("account_login"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'type="submit">Sign In</button>')
+        self.assertContains(response, 'href="/accounts/facebook/login/"')
+        self.assertNotContains(response, "Facebook sign-in is not configured")
+
+    def test_account_pages_render_brand_and_disabled_social_options(self):
+        login_response = self.client.get(reverse("account_login"))
+        self.assertContains(login_response, "AS")
+        self.assertContains(login_response, "ANNELSA LUXURY")
+        self.assertContains(login_response, "Continue with Google")
+        self.assertContains(login_response, "Continue with Facebook")
+        self.assertContains(login_response, "disabled")
+
+        register_response = self.client.get(reverse("account_register"))
+        self.assertContains(register_response, "AS")
+        self.assertContains(register_response, "Create your account")
+        self.assertContains(register_response, reverse("account_login"))
+        self.assertContains(register_response, "Continue with Google")
+        self.assertContains(register_response, "Continue with Facebook")
+        self.assertContains(register_response, "disabled")
+
+    def test_registration_rejects_invalid_email_and_password_mismatch(self):
+        invalid_email_response = self.client.post(
+            reverse("account_register"),
+            {
+                "email": "not-an-email",
+                "password1": "SecurePassword-123!",
+                "password2": "SecurePassword-123!",
+            },
+        )
+        self.assertEqual(invalid_email_response.status_code, 200)
+        self.assertIn("email", invalid_email_response.context["form"].errors)
+        self.assertEqual(User.objects.count(), 0)
+
+        mismatch_response = self.client.post(
+            reverse("account_register"),
+            {
+                "email": "customer@example.com",
+                "password1": "SecurePassword-123!",
+                "password2": "DifferentPassword-456!",
+            },
+        )
+        self.assertEqual(mismatch_response.status_code, 200)
+        self.assertIn("password2", mismatch_response.context["form"].errors)
+        self.assertEqual(User.objects.count(), 0)
+
+    def test_registration_login_and_private_order_history(self):
+        response = self.client.post(
+            reverse("account_register"),
+            {
+                "email": "customer@example.com",
+                "password1": "SecurePassword-123!",
+                "password2": "SecurePassword-123!",
+            },
+        )
+        self.assertRedirects(response, reverse("account_orders"))
+        customer_user = User.objects.get(email="customer@example.com")
+        customer = Customer.objects.create(
+            user=customer_user,
+            name="Customer",
+            phone="12345",
+        )
+        own_order = Order.objects.create(
+            customer=customer,
+            total=Decimal("25.00"),
+        )
+        other_customer = Customer.objects.create(
+            name="Other Customer",
+            phone="54321",
+        )
+        Order.objects.create(customer=other_customer, total=Decimal("50.00"))
+
+        self.client.logout()
+        login_response = self.client.post(
+            reverse("account_login"),
+            {
+                "email": "customer@example.com",
+                "password": "SecurePassword-123!",
+            },
+        )
+        self.assertEqual(login_response.status_code, 200)
+        self.assertEqual(login_response.json()["status"], "success")
+        orders_response = self.client.get(reverse("account_orders"))
+        self.assertContains(orders_response, f"Order #{own_order.id}")
+        self.assertNotContains(
+            orders_response,
+            f"Order #{own_order.id + 1}",
+        )
+
+    def test_order_history_requires_login(self):
+        response = self.client.get(reverse("account_orders"))
+        self.assertRedirects(
+            response,
+            f"{reverse('account_login')}?next={reverse('account_orders')}",
+        )
+
+    def test_account_dashboard_shows_profile_and_security_sections(self):
+        user = User.objects.create_user(
+            username="dashboard@example.com",
+            email="dashboard@example.com",
+            password="SecurePassword-123!",
+        )
+        Customer.objects.create(
+            user=user,
+            name="Dashboard Customer",
+            phone="12345",
+            email="buyer@example.com",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("account_orders"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Profile details")
+        self.assertContains(response, "Dashboard Customer")
+        self.assertContains(response, "buyer@example.com")
+        self.assertContains(response, "Order history")
+        self.assertContains(response, reverse("account_password_change"))
+
+    def test_password_change_requires_login_and_updates_password(self):
+        password_change_url = reverse("account_password_change")
+        anonymous_response = self.client.get(password_change_url)
+        self.assertRedirects(
+            anonymous_response,
+            f"{reverse('account_login')}?next={password_change_url}",
+        )
+
+        user = User.objects.create_user(
+            username="password@example.com",
+            email="password@example.com",
+            password="SecurePassword-123!",
+        )
+        self.client.force_login(user)
+        response = self.client.post(
+            password_change_url,
+            {
+                "old_password": "SecurePassword-123!",
+                "new_password1": "AnotherSecurePassword-456!",
+                "new_password2": "AnotherSecurePassword-456!",
+            },
+        )
+
+        self.assertRedirects(response, reverse("account_orders"))
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("AnotherSecurePassword-456!"))
+
+
+class AdminInventoryTests(ShopTestCase):
+    def test_cancelling_order_restores_reserved_stock(self):
+        customer = Customer.objects.create(
+            name="Test Buyer",
+            phone="12345",
+        )
+        self.product.stock = 8
+        self.product.save(update_fields=["stock"])
+        order = Order.objects.create(
+            customer=customer,
+            total=Decimal("2500.00"),
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            product_name=self.product.name,
+            price=self.product.price,
+            quantity=2,
+        )
+
+        order.status = "cancelled"
+        OrderAdmin(Order, AdminSite()).save_model(
+            RequestFactory().post("/admin/shop/order/"),
+            order,
+            form=None,
+            change=True,
+        )
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 10)

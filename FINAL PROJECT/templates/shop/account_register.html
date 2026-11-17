@@ -1,0 +1,109 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Create account | ANNELSA LUXURY</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap"
+          rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'css/account.css' %}">
+</head>
+<body class="auth-page">
+    <main class="auth-card">
+        <header class="auth-brand">
+            <div class="auth-mark" aria-label="ANNELSA LUXURY monogram">AS</div>
+            <p class="auth-brand-name">ANNELSA LUXURY</p>
+        </header>
+        <h1 class="auth-heading">Create your account</h1>
+        <p class="auth-intro">Join us for a more personal shopping experience.</p>
+
+        <form method="post" action="{% url 'account_register' %}" class="auth-form">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="auth-error" role="alert">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <label for="{{ form.email.id_for_label }}">Email address</label>
+            {{ form.email }}
+            {% for error in form.email.errors %}
+                <p class="auth-field-errors" role="alert">{{ error }}</p>
+            {% endfor %}
+
+            <label for="{{ form.password1.id_for_label }}">Password</label>
+            <div class="auth-password-wrap">
+                {{ form.password1 }}
+                <button type="button" class="auth-password-toggle"
+                        data-target="{{ form.password1.id_for_label }}"
+                        aria-label="Show password" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.7" aria-hidden="true">
+                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </button>
+            </div>
+            <p class="auth-password-hint">Use at least 8 characters. Avoid common or easily guessed passwords.</p>
+            {% for error in form.password1.errors %}
+                <p class="auth-field-errors" role="alert">{{ error }}</p>
+            {% endfor %}
+
+            <label for="{{ form.password2.id_for_label }}">Confirm password</label>
+            <div class="auth-password-wrap">
+                {{ form.password2 }}
+                <button type="button" class="auth-password-toggle"
+                        data-target="{{ form.password2.id_for_label }}"
+                        aria-label="Show password" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.7" aria-hidden="true">
+                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </button>
+            </div>
+            {% for error in form.password2.errors %}
+                <p class="auth-field-errors" role="alert">{{ error }}</p>
+            {% endfor %}
+
+            <button type="submit" class="auth-submit">CREATE ACCOUNT</button>
+        </form>
+
+        <div class="auth-social" aria-label="Social account options">
+            <div class="auth-social-divider"><span>OR CONTINUE WITH</span></div>
+            <button type="button" class="auth-social-button" disabled
+                    title="Google sign-in is not configured yet">Continue with Google</button>
+            <button type="button" class="auth-social-button" disabled
+                    title="Facebook sign-in is not configured yet">Continue with Facebook</button>
+            <p class="auth-social-note">Social sign-in is not configured yet.</p>
+        </div>
+
+        <p class="auth-switch">
+            Already have an account? <a href="{% url 'account_login' %}">Sign in</a>
+        </p>
+        <a href="{% url 'home' %}" class="auth-back-link">← Back to the store</a>
+    </main>
+
+    <script>
+        document.querySelectorAll(".auth-password-toggle").forEach((button) => {
+            button.addEventListener("click", () => {
+                const input = document.getElementById(button.dataset.target);
+
+                if (!input) return;
+
+                const showing = input.type === "password";
+                input.type = showing ? "text" : "password";
+
+                button.setAttribute("aria-pressed", String(showing));
+                button.setAttribute(
+                    "aria-label",
+                    showing ? "Hide password" : "Show password"
+                );
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>My Account | ANNELSA LUXURY</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap"
+          rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'css/account.css' %}">
+</head>
+<body class="auth-page dashboard-page">
+    <main class="dashboard-shell">
+        <header class="dashboard-header">
+            <a class="dashboard-brand" href="{% url 'home' %}" aria-label="ANNELSA LUXURY home">
+                <span class="auth-mark" aria-hidden="true">AS</span>
+                <span class="auth-brand-name">ANNELSA LUXURY</span>
+            </a>
+            <div class="dashboard-heading">
+                <p class="dashboard-eyebrow">YOUR ACCOUNT</p>
+                <h1 class="auth-heading">Welcome{% if customer.name %}, {{ customer.name }}{% elif request.user.first_name %}, {{ request.user.first_name }}{% endif %}</h1>
+                <p class="auth-intro">Manage your profile, orders, and account security.</p>
+            </div>
+            <a class="dashboard-store-link" href="{% url 'home' %}">Continue shopping</a>
+        </header>
+
+        <div class="dashboard-grid">
+            <section class="dashboard-panel profile-panel" aria-labelledby="profile-heading">
+                <div class="dashboard-panel-heading">
+                    <div>
+                        <p class="dashboard-eyebrow">PERSONAL INFORMATION</p>
+                        <h2 id="profile-heading">Profile details</h2>
+                    </div>
+                    <span class="dashboard-panel-icon" aria-hidden="true">01</span>
+                </div>
+                <dl class="profile-details">
+                    <div>
+                        <dt>Name</dt>
+                        <dd>{% if customer.name %}{{ customer.name }}{% else %}{{ request.user.get_full_name|default:request.user.username }}{% endif %}</dd>
+                    </div>
+                    <div>
+                        <dt>Email address</dt>
+                        <dd>{{ customer.email|default:request.user.email|default:"Not provided" }}</dd>
+                    </div>
+                </dl>
+            </section>
+
+            <section class="dashboard-panel security-panel" aria-labelledby="security-heading">
+                <div class="dashboard-panel-heading">
+                    <div>
+                        <p class="dashboard-eyebrow">ACCOUNT SETTINGS</p>
+                        <h2 id="security-heading">Security</h2>
+                    </div>
+                    <span class="dashboard-panel-icon" aria-hidden="true">02</span>
+                </div>
+                <p class="dashboard-panel-copy">
+                    Keep your account secure by choosing a strong, unique password.
+                </p>
+                <a class="auth-submit dashboard-action" href="{% url 'account_password_change' %}">
+                    Change password
+                </a>
+            </section>
+
+            <section class="dashboard-panel orders-panel" aria-labelledby="orders-heading">
+                <div class="dashboard-panel-heading orders-heading">
+                    <div>
+                        <p class="dashboard-eyebrow">YOUR PURCHASES</p>
+                        <h2 id="orders-heading">Order history</h2>
+                    </div>
+                    <span class="order-count">{{ orders|length }} order{{ orders|length|pluralize }}</span>
+                </div>
+
+                {% for order in orders %}
+                    <article class="dashboard-order">
+                        <div class="dashboard-order-top">
+                            <div>
+                                <h3>Order #{{ order.id }}</h3>
+                                <p class="dashboard-order-date">{{ order.created_at|date:"M j, Y" }}</p>
+                            </div>
+                            <span class="order-status status-{{ order.status }}">{{ order.get_status_display }}</span>
+                        </div>
+                        <ul class="dashboard-order-items">
+                            {% for item in order.items.all %}
+                                <li>
+                                    <span>{{ item.product_name }} <span class="order-quantity">× {{ item.quantity }}</span></span>
+                                    <span>₦{{ item.subtotal|floatformat:2 }}</span>
+                                </li>
+                            {% empty %}
+                                <li><span>Order items unavailable</span></li>
+                            {% endfor %}
+                        </ul>
+                        <div class="dashboard-order-total">
+                            <span>Order total</span>
+                            <strong>₦{{ order.total|floatformat:2 }}</strong>
+                        </div>
+                    </article>
+                {% empty %}
+                    <div class="dashboard-empty">
+                        <span class="dashboard-empty-mark" aria-hidden="true">✦</span>
+                        <h3>Your order history is waiting</h3>
+                        <p>When you place an order, its details and status will appear here.</p>
+                        <a class="auth-submit dashboard-action" href="{% url 'home' %}">Explore the collection</a>
+                    </div>
+                {% endfor %}
+            </section>
+        </div>
+
+        <footer class="dashboard-footer">
+            <span>Signed in as {{ request.user.email|default:request.user.username }}</span>
+            <form method="post" action="{% url 'account_logout' %}">
+                {% csrf_token %}
+                <button class="dashboard-signout" type="submit">Sign out</button>
+            </form>
+        </footer>
+    </main>
+</body>
+</html>

@@ -1,0 +1,1571 @@
+
+{% load static %}
+
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="author" content="nanzing john">
+
+    <meta name="description"
+          content="A premium luxury catalog for fashion, gadgets, and lifestyle collections.">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>
+        {{ site_settings.business_name|default:"ANNELSA LUXURY" }} | Premium Catalog
+    </title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap"
+          rel="stylesheet">
+
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+
+  
+<script>
+    window.ORDER_SETTINGS = {
+        whatsapp_number:
+            "{{ site_settings.whatsapp_number|default:''|escapejs }}",
+        telegram_username:
+            "{{ site_settings.telegram_username|default:''|escapejs }}",
+        payment_method:
+            "{{ site_settings.payment_method|default:'contact'|escapejs }}",
+        whatsapp_enabled:
+            {{ site_settings.whatsapp_enabled|yesno:"true,false"|default:"false" }},
+        telegram_enabled:
+            {{ site_settings.telegram_enabled|yesno:"true,false"|default:"false" }}
+    };
+    window.PAYMENT_SUCCESSFUL = {% if payment_success%}true{% else %}false{% endif %};
+</script>
+
+
+
+</head>
+
+
+<body>
+
+<div class="hero-glow"></div>
+
+
+<!-- =========================
+     HERO
+========================= -->
+
+<section class="hero">
+
+    <div class="hero-content">
+
+        <div class="hero-logo">
+
+            {% if site_settings.logo %}
+                <img src="{{ site_settings.logo.url }}"
+                     alt="{{ site_settings.business_name|default:'ANNELSA LUXURY' }} logo">
+            {% else %}
+                <span class="gold-gradient-text" aria-hidden="true">ANNELSA LUXURY</span>
+            {% endif %}
+
+        </div>
+
+
+        <h1 class="gold-gradient-text">
+
+            {{ site_settings.business_name|default:"ANNELSA LUXURY" }}
+
+        </h1>
+
+
+        <p>
+
+            {{ site_settings.tagline|default:"Premium essentials for modern luxury living." }}
+
+        </p>
+
+
+        <div class="hero-buttons">
+
+            <a href="#products" class="primary-btn">
+
+                Explore Collection
+
+            </a>
+
+
+            <button type="button"
+                    class="secondary-btn"
+                    onclick="document.getElementById('products').scrollIntoView({behavior:'smooth'})">
+
+                Shop Bestsellers
+
+            </button>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- =========================
+     HEADER
+========================= -->
+
+<header>
+
+    <div class="container">
+
+        <div class="header-wrap">
+
+            <div class="brand">
+
+                <h1 class="gold-gradient-text">
+
+                    {{ site_settings.business_name|default:"ANNELSA LUXURY" }}
+
+                </h1>
+
+
+                <p>
+
+                    {{ site_settings.tagline|default:"Premium Catalog" }}
+
+                </p>
+
+            </div>
+
+
+
+            <div class="search-wrap">
+
+                <div class="search-box">
+
+                    <input type="text"
+                           id="search"
+                           aria-label="Search products"
+                           placeholder="Search premium collections...">
+
+                    <div class="search-icon">
+
+                        🔍
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- =========================
+                 CART + SETTINGS
+            ========================= -->
+
+            <div class="header-actions">
+
+                <button type="button"
+                        id="cartButton"
+                        class="header-action-btn"
+                        aria-label="Shopping bag">
+
+                    🛍️
+
+                    <span id="cartCount">0</span>
+
+                </button>
+
+
+                <button type="button"
+                        id="settingsButton"
+                        class="header-action-btn"
+                        aria-label="Settings">
+
+                    ⋮
+
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</header>
+
+
+
+<!-- =========================
+     SETTINGS MENU
+========================= -->
+
+<div id="settingsMenu" class="settings-menu"
+     style="flex-direction:column;align-items:flex-start;gap:4px;">
+
+    <button type="button"
+            onclick="closeSettingsMenu()">
+
+        Close
+
+    </button>
+
+
+    <!-- SIGN IN -->
+
+    {% if request.user.is_authenticated %}
+        <a href="{% url 'account_orders' %}">My Account and Orders</a>
+        <form method="post" action="{% url 'account_logout' %}">
+            {% csrf_token %}
+            <button type="submit">Sign Out</button>
+        </form>
+    {% else %}
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">
+            <a href="{% url 'account_login' %}">Sign In</a>
+            <a href="{% url 'account_register' %}">Create Account</a>
+        </div>
+    {% endif %}
+
+
+    <!-- CUSTOMER REVIEWS -->
+
+    <button type="button"
+            onclick="openCustomerReviews()">
+
+        Customer Reviews
+
+    </button>
+
+
+</div>
+
+
+
+<!-- =========================
+     CATEGORIES
+========================= -->
+
+<nav class="category-nav">
+
+    <button type="button"
+            onclick="filterProducts('all', this)"
+            class="nav-btn active-cat">
+
+        All
+
+    </button>
+
+
+    {% for category in categories %}
+
+        <button type="button"
+                onclick="filterProducts('{{ category.id }}', this)"
+                class="nav-btn">
+
+            {{ category.name }}
+
+        </button>
+
+    {% endfor %}
+
+</nav>
+
+
+
+<!-- =========================
+     TRUST SECTION
+========================= -->
+
+<section class="container">
+
+    <div class="trust-grid">
+
+        <div class="glass-card trust-card">
+
+            <h3>100%</h3>
+
+            <p>
+
+                Verified Products
+
+            </p>
+
+        </div>
+
+
+        <div class="glass-card trust-card">
+
+            <h3>24/7</h3>
+
+            <p>
+
+                Customer Support
+
+            </p>
+
+        </div>
+
+
+        <div class="glass-card trust-card">
+
+            <h3>Fast</h3>
+
+            <p>
+
+                Nationwide Delivery
+
+            </p>
+
+        </div>
+
+
+        <div class="glass-card trust-card">
+
+            <h3>Secure</h3>
+
+            <p>
+
+                Safe Transactions
+
+            </p>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% if payment_success %}
+    <div class="container status-message status-success" role="status">
+        Payment verified. Order #{{ order_id }} is confirmed.
+    </div>
+{% elif payment_error %}
+    <div class="container status-message status-error" role="alert">
+        {{ payment_error }}
+    </div>
+{% endif %}
+
+
+
+<!-- =========================
+     PRODUCTS
+========================= -->
+
+<main id="products"
+      class="container products-grid">
+
+
+    {% for product in products %}
+
+        <div class="card glass-card product-card"
+
+             data-product-id="{{ product.id }}"
+
+             data-product-name="{{ product.name }}"
+
+             data-product-price="{{ product.price }}"
+
+             data-product-category="{{ product.category_id }}"
+
+             data-product-category-name="{{ product.category.name }}"
+
+             data-product-description="{{ product.description }}"
+
+             data-product-stock="{{ product.stock }}">
+
+
+            <!-- PRODUCT IMAGE -->
+
+            <div class="product-image">
+
+
+                {% with first_image=product.images.all|first %}
+
+                    {% if first_image %}
+
+                        <img src="{{ first_image.image.url }}"
+
+                             alt="{{ product.name }}"
+
+                             id="img-{{ product.id }}">
+
+                    {% else %}
+                        <div class="product-image-placeholder"
+                             role="img"
+                             aria-label="Image coming soon for {{ product.name }}">
+                            Image coming soon
+                        </div>
+
+                    {% endif %}
+
+                {% endwith %}
+
+
+
+                <div class="slider-overlay">
+
+                    <button type="button"
+
+                            onclick="prevImg({{ product.id }}, event)"
+
+                            class="slider-btn">
+
+                        ❮
+
+                    </button>
+
+
+                    <button type="button"
+
+                            onclick="nextImg({{ product.id }}, event)"
+
+                            class="slider-btn">
+
+                        ❯
+
+                    </button>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- PRODUCT CATEGORY -->
+
+            <span class="product-category">
+
+                {{ product.category.name }}
+
+            </span>
+
+
+
+            <!-- PRODUCT NAME -->
+
+            <h3 class="product-title">
+
+                {{ product.name }}
+
+            </h3>
+
+            {% if product.description %}
+                <p class="product-description">{{ product.description }}</p>
+            {% endif %}
+
+            <p class="product-stock{% if not product.stock %} out-of-stock{% endif %}">
+                {% if product.stock %}
+                    {{ product.stock }} in stock
+                {% else %}
+                    Out of stock
+                {% endif %}
+            </p>
+
+
+
+            <!-- PRODUCT RATING -->
+
+            <div class="rating">
+
+                <button type="button"
+
+                        class="rating-star"
+
+                        onclick="openRating({{ product.id }})"
+
+                        aria-label="Rate {{ product.name }}">
+
+                    ☆
+
+                </button>
+
+
+                <span class="rating-stars">
+
+                    ★★★★★
+
+                </span>
+
+
+                <span class="rating-value">
+
+                    ({{ product.average_rating|default:0|floatformat:1 }})
+
+                </span>
+
+            </div>
+
+
+
+            <!-- PRICE + BUTTONS -->
+
+            <div class="product-bottom">
+
+                <div class="product-actions" style="width: 100%;">
+
+                    <button type="button"
+                            class="add-cart-btn"
+                            style="flex: 1 1 0; width: auto;"
+                            onclick="addToCart({{ product.id }})"
+                            {% if not product.stock %}disabled{% endif %}>
+
+                        Add to Cart
+
+                    </button>
+
+
+                    <button type="button"
+
+                            onclick="openOrderForProduct({{ product.id }})"
+
+                            class="order-btn"
+                            style="flex: 1 1 0; width: auto;"
+                            {% if not product.stock %}disabled{% endif %}>
+
+                        Order
+
+                    </button>
+
+                </div>
+
+
+                <p class="price">
+
+                    ₦{{ product.price|floatformat:0 }}
+
+                </p>
+
+            </div>
+
+
+
+            <!-- PRODUCT IMAGES FOR JAVASCRIPT -->
+
+            <div class="product-images-data"
+
+                 id="images-{{ product.id }}"
+
+                 hidden>
+
+                {% for product_image in product.images.all %}
+
+                    <span data-image="{{ product_image.image.url }}"></span>
+
+                {% endfor %}
+
+            </div>
+
+        </div>
+
+
+    {% empty %}
+
+
+        <div class="glass-card product-card empty-products">
+
+            {% if query %}
+            <p class="product-description">
+                No products found matching your search. Please try another keyword!
+            </p>
+            {% endif %}
+
+        </div>
+
+
+    {% endfor %}
+
+    <div id="productSearchEmptyState"
+         class="glass-card product-card empty-products"
+         hidden>
+        <p class="product-description">
+            No products found matching your search. Please try another keyword!
+        </p>
+    </div>
+
+</main>
+
+
+
+<!-- =========================
+     WHY CUSTOMERS CHOOSE US
+========================= -->
+
+<section class="section">
+
+    <div class="container">
+
+        <div class="section-title">
+
+            <h2 class="gold-gradient-text">
+
+                Why Customers Choose
+
+                {{ site_settings.business_name|default:"ANNELSA LUXURY" }}
+
+            </h2>
+
+
+            <p>
+
+                We provide premium quality products, trusted customer service and a luxury shopping experience.
+
+            </p>
+
+        </div>
+
+
+        <div class="three-grid">
+
+
+            <div class="glass-card info-card">
+
+                <h3>
+
+                    Premium Quality
+
+                </h3>
+
+
+                <p>
+
+                    Carefully selected luxury products with elite standards.
+
+                </p>
+
+            </div>
+
+
+            <div class="glass-card info-card">
+
+                <h3>
+
+                    Trusted Ordering
+
+                </h3>
+
+
+                <p>
+
+                    Secure communication through WhatsApp and Telegram.
+
+                </p>
+
+            </div>
+
+
+            <div class="glass-card info-card">
+
+                <h3>
+
+                    Fast Delivery
+
+                </h3>
+
+
+                <p>
+
+                    Nationwide and international delivery available.
+
+                </p>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- =========================
+     CUSTOMER REVIEWS
+========================= -->
+
+<section class="container">
+
+    <div class="section-title">
+
+        <h2 class="gold-gradient-text">
+
+            Customer Reviews
+
+        </h2>
+
+    </div>
+
+
+    <div class="three-grid">
+
+
+        {% for review in reviews %}
+
+            <div class="glass-card review-card">
+
+                <p class="review-stars">
+
+                    {% for i in "12345" %}
+
+                        {% if forloop.counter <= review.rating %}
+
+                            ★
+
+                        {% else %}
+
+                            ☆
+
+                        {% endif %}
+
+                    {% endfor %}
+
+                </p>
+
+
+                <p class="review-text">
+
+                    {{ review.comment }}
+
+                </p>
+
+
+                <h4 class="review-name">
+
+                    — {{ review.name }}
+
+                </h4>
+
+            </div>
+
+
+        {% empty %}
+
+
+            <div class="glass-card review-card">
+
+                <p class="review-text">
+
+                    No customer reviews yet.
+
+                </p>
+
+            </div>
+
+
+        {% endfor %}
+
+    </div>
+
+</section>
+
+
+
+<!-- =========================
+     SHOPPING CART
+========================= -->
+
+<div id="cartPanel"
+
+     class="cart-panel">
+
+
+    <div class="cart-header">
+
+        <h2>
+
+            Shopping Bag
+
+        </h2>
+
+
+        <button type="button"
+
+                onclick="closeCart()">
+
+            ×
+
+        </button>
+
+    </div>
+
+
+    <div id="cartItems"
+
+         class="cart-items">
+
+        <p>
+
+            Your shopping bag is empty.
+
+        </p>
+
+    </div>
+
+
+    <div class="cart-footer">
+
+        <div class="cart-total">
+
+            <span>
+
+                Total
+
+            </span>
+
+
+            <strong id="cartTotal">
+
+                ₦0
+
+            </strong>
+
+        </div>
+
+
+        <button type="button"
+
+                onclick="openCheckout()"
+
+                class="checkout-btn">
+
+            Proceed to Order
+
+        </button>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================
+     EMPTY CART MODAL
+========================= -->
+
+<div id="emptyCartModal"
+
+     class="modal">
+
+
+    <div class="modal-content">
+
+        <h2>
+
+            Shopping Bag Is Empty
+
+        </h2>
+
+
+        <p>
+
+            Please add a product to your shopping bag before proceeding to order.
+
+        </p>
+
+
+        <button type="button"
+
+                onclick="closeEmptyCartModal()"
+
+                class="checkout-btn">
+
+            OK
+
+        </button>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================
+     RATING MODAL
+========================= -->
+
+<div id="ratingModal"
+
+     class="modal">
+
+
+    <div class="modal-content">
+
+        <h2>
+
+            Rate Product
+
+        </h2>
+
+
+        <p id="ratingProductName"></p>
+
+
+        <form id="ratingForm" class="feature-form"
+              method="post" action="{% url 'submit_review' %}">
+            {% csrf_token %}
+            <input type="hidden" name="product_id" id="ratingProductIdInput">
+            <input type="hidden" name="rating" id="ratingInput" required>
+            <input type="text" name="name" id="ratingName"
+                   placeholder="Your Name" maxlength="150" required>
+            <div class="rating-selector">
+
+            <button type="button"
+
+                    onclick="selectRating(1)">
+
+                ★
+
+            </button>
+
+
+            <button type="button"
+
+                    onclick="selectRating(2)">
+
+                ★
+
+            </button>
+
+
+            <button type="button"
+
+                    onclick="selectRating(3)">
+
+                ★
+
+            </button>
+
+
+            <button type="button"
+
+                    onclick="selectRating(4)">
+
+                ★
+
+            </button>
+
+
+            <button type="button"
+
+                    onclick="selectRating(5)">
+
+                ★
+
+            </button>
+
+            </div>
+            <textarea name="comment" id="ratingComment"
+                      placeholder="Write a short review..." required></textarea>
+            <button type="submit" class="checkout-btn">
+                Submit Rating and Review
+            </button>
+        </form>
+
+        <button type="button"
+
+                onclick="closeRating()"
+
+                class="close-btn">
+
+            Close
+
+        </button>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================
+     RATING THANK YOU MODAL
+========================= -->
+
+<div id="ratingThankYouModal"
+
+     class="modal">
+
+
+    <div class="modal-content">
+
+        <h2>
+
+            Thank You!
+
+        </h2>
+
+
+        <p>
+
+            Thank you for rating this product.
+
+        </p>
+
+
+        <button type="button"
+
+                onclick="closeRatingThankYouModal()"
+
+                class="checkout-btn">
+
+            OK
+
+        </button>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================
+     CUSTOMER REVIEWS MODAL
+========================= -->
+
+<div id="customerReviewsModal"
+
+     class="modal">
+
+
+    <div class="modal-content">
+
+        <h2>
+
+            Customer Reviews
+
+        </h2>
+
+
+        <div class="customer-reviews-list">
+
+
+            {% for review in reviews %}
+
+                <div class="review-card">
+
+                    <p class="review-stars">
+
+                        {% for i in "12345" %}
+
+                            {% if forloop.counter <= review.rating %}
+
+                                ★
+
+                            {% else %}
+
+                                ☆
+
+                            {% endif %}
+
+                        {% endfor %}
+
+                    </p>
+
+
+                    <p class="review-text">
+
+                        {{ review.comment }}
+
+                    </p>
+
+
+                    <h4 class="review-name">
+
+                        — {{ review.name }}
+
+                    </h4>
+
+                </div>
+
+
+            {% empty %}
+
+                <p class="review-text">
+
+                    No customer reviews yet.
+
+                </p>
+
+            {% endfor %}
+
+
+        </div>
+
+
+        <button type="button"
+
+                onclick="openWriteReview()"
+
+                class="checkout-btn">
+
+            Write a Review
+
+        </button>
+
+
+        <button type="button"
+
+                onclick="closeCustomerReviews()"
+
+                class="close-btn">
+
+            Close
+
+        </button>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================
+     WRITE A REVIEW MODAL
+========================= -->
+
+<div id="writeReviewModal"
+
+     class="modal">
+
+
+    <div class="modal-content">
+
+        <h2>
+
+            Write a Review
+
+        </h2>
+
+
+        <p>
+
+            Tell us about your experience with ANNELSA LUXURY.
+
+        </p>
+
+
+        <form id="reviewForm" class="feature-form"
+              method="post" action="{% url 'submit_review' %}">
+            {% csrf_token %}
+
+            <select name="product_id" id="reviewProduct" required>
+                <option value="">Choose a product</option>
+                {% for product in products %}
+                    <option value="{{ product.id }}">{{ product.name }}</option>
+                {% endfor %}
+            </select>
+
+            <select name="rating" id="reviewRating" required>
+                <option value="">Choose a rating</option>
+                <option value="5">5 stars</option>
+                <option value="4">4 stars</option>
+                <option value="3">3 stars</option>
+                <option value="2">2 stars</option>
+                <option value="1">1 star</option>
+            </select>
+
+            <input type="text"
+
+                   id="reviewName"
+
+                   name="name"
+
+                   placeholder="Your Name"
+
+                   required>
+
+
+            <textarea id="reviewComment"
+
+                      name="comment"
+
+                      placeholder="Write your review..."
+
+                      required></textarea>
+
+
+            <button type="submit"
+
+                    class="checkout-btn">
+
+                Submit Review
+
+            </button>
+
+
+            <button type="button"
+
+                    onclick="closeWriteReview()"
+
+                    class="close-btn">
+
+                Cancel
+
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================
+     REVIEW THANK YOU MODAL
+========================= -->
+
+<div id="reviewThankYouModal"
+
+     class="modal">
+
+
+    <div class="modal-content">
+
+        <h2>
+
+            Thank You!
+
+        </h2>
+
+
+        <p>
+
+            Thank you for your review. Your review will be checked before it appears on ANNELSA LUXURY.
+
+        </p>
+
+
+        <button type="button"
+
+                onclick="closeReviewThankYou()"
+
+                class="checkout-btn">
+
+            OK
+
+        </button>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================
+     SIGN IN MODAL
+========================= -->
+
+<div id="signInModal"
+
+     class="modal">
+
+
+    <div class="modal-content">
+
+        <h2>
+
+            Sign In
+
+        </h2>
+
+
+        <p>
+
+            Sign in to your ANNELSA LUXURY account.
+
+        </p>
+
+
+        <form id="signInForm" method="post" action="{% url 'account_login' %}">
+            {% csrf_token %}
+
+
+            <input type="email"
+
+                   id="signInEmail"
+
+                   name="email"
+
+                   placeholder="Email Address"
+
+                   required>
+
+
+            <input type="password"
+
+                   id="signInPassword"
+
+                   name="password"
+
+                   placeholder="Password"
+
+                   required>
+
+
+            <button type="submit"
+
+                    class="checkout-btn">
+
+                Sign In
+
+            </button>
+
+            <a href="{% url 'account_register' %}" class="account-register-link">
+                Create an account
+            </a>
+
+
+            <button type="button"
+
+                    onclick="closeSignIn()"
+
+                    class="close-btn">
+
+                Close
+
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================
+     CHECKOUT MODAL
+========================= -->
+
+<div id="checkoutModal"
+
+     class="modal">
+
+
+    <div class="modal-content checkout-content">
+
+        <h2>
+
+            Complete Your Order
+
+        </h2>
+
+
+        <p>
+
+            Please provide your information before your order is sent.
+
+        </p>
+
+
+        <form id="checkoutForm"
+
+              method="POST"
+
+              action="{% url 'create_order' %}">
+
+
+            {% csrf_token %}
+
+
+            <input type="text"
+
+                   id="customerName"
+
+                   name="customer_name"
+
+                   placeholder="Full Name"
+
+                   required>
+
+
+            <input type="tel"
+
+                   id="customerPhone"
+
+                   name="phone"
+
+                   placeholder="Phone Number"
+
+                   required>
+
+                <input type="email"
+                id="customerEmail"
+                name="email"
+                placeholder="Email Address"
+                style="display: none;">
+
+                <div id="contactMethodField" style="display:none;">
+                    <label for="contactMethod">Where would you like to send your order?</label>
+                    <select id="contactMethod" name="contact_method">
+                        <option value="" selected disabled>Choose WhatsApp or Telegram</option>
+                        {% if site_settings.whatsapp_enabled and site_settings.whatsapp_number %}
+                            <option value="whatsapp">WhatsApp</option>
+                        {% endif %}
+                        {% if site_settings.telegram_enabled and site_settings.telegram_username %}
+                            <option value="telegram">Telegram</option>
+                        {% endif %}
+                    </select>
+                </div>
+
+                <input type="text"
+
+                   id="customerLocation"
+
+                   name="location"
+
+                   placeholder="Location / City"
+
+                   required>
+
+
+            <textarea id="customerAddress"
+
+                      name="address"
+
+                      placeholder="Delivery Address"
+
+                      required></textarea>
+
+
+            <textarea id="customerNote"
+
+                      name="additional_information"
+
+                      placeholder="Additional Information"></textarea>
+
+
+            <input type="hidden"
+
+                   id="cartData"
+
+                   name="cart_data">
+
+            <input type="hidden"
+                   name="checkout_key"
+                   value="{{ checkout_key }}">
+
+
+            <button type="submit"
+
+                    class="checkout-btn">
+
+                Confirm Order
+
+            </button>
+
+
+            <button type="button"
+
+                    onclick="closeCheckout()"
+
+                    class="close-btn">
+
+                Cancel
+
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================
+     FOOTER
+========================= -->
+
+<footer>
+
+    <div class="container footer-content">
+
+        <h2 class="gold-gradient-text">
+
+            {{ site_settings.business_name|default:"ANNELSA LUXURY" }}
+
+        </h2>
+
+
+        <p>
+
+            {{ site_settings.tagline|default:"Premium luxury products for modern lifestyle." }}
+
+        </p>
+
+
+        <div class="footer-links">
+
+
+            {% if site_settings.whatsapp_number %}
+
+                <a href="https://wa.me/{{ site_settings.whatsapp_number }}"
+
+                   target="_blank">
+
+                    WhatsApp
+
+                </a>
+
+            {% endif %}
+
+
+            {% if site_settings.telegram_username %}
+
+                <a href="https://t.me/{{ site_settings.telegram_username }}"
+
+                   target="_blank">
+
+                    Telegram
+
+                </a>
+
+            {% endif %}
+
+
+            {% for social in social_links %}
+
+                <a href="{{ social.url }}"
+
+                   target="_blank"
+
+                   rel="noopener noreferrer">
+
+                    {{ social.name }}
+
+                </a>
+
+            {% endfor %}
+
+        </div>
+
+
+        <p class="copyright">
+
+            © {% now "Y" %}
+
+            {{ site_settings.business_name|default:"ANNELSA LUXURY" }}.
+
+            All rights reserved.
+
+        </p>
+
+    </div>
+
+</footer>
+
+
+
+<!-- =========================
+     JAVASCRIPT
+========================= -->
+
+<script src="{% static 'js/script.js' %}"></script>
+
+
+</body>
+
+</html>
