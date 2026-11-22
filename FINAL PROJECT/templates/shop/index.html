@@ -124,9 +124,13 @@
             <div class="brand">
 
                 <h1 class="gold-gradient-text">
-
-                    {{ site_settings.business_name|default:"ANNELSA LUXURY" }}
-
+                    {% if site_settings.logo %}
+                        <img class="brand-logo"
+                             src="{{ site_settings.logo.url }}"
+                             alt="{{ site_settings.business_name|default:'ANNELSA LUXURY' }}">
+                    {% else %}
+                        {{ site_settings.business_name|default:"ANNELSA LUXURY" }}
+                    {% endif %}
                 </h1>
 
 
@@ -1530,13 +1534,15 @@
 
         {% if site_settings.developer_name or site_settings.developer_url or site_settings.developer_email or site_settings.developer_whatsapp %}
             <p class="developer-credit">
-                Developed by
-                {% if site_settings.developer_url %}
+                Built by
+                {% if site_settings.developer_name and site_settings.developer_whatsapp_url %}
+                    <a href="{{ site_settings.developer_whatsapp_url }}"
+                       target="_blank"
+                       rel="noopener noreferrer">{{ site_settings.developer_name }}</a>
+                {% elif site_settings.developer_url %}
                     <a href="{{ site_settings.developer_url }}"
                        target="_blank"
-                       rel="noopener noreferrer">
-                        {{ site_settings.developer_name|default:"Developer" }}
-                    </a>
+                       rel="noopener noreferrer">{{ site_settings.developer_name|default:"Developer" }}</a>
                 {% elif site_settings.developer_name %}
                     {{ site_settings.developer_name }}
                 {% else %}
@@ -1545,7 +1551,7 @@
                 {% if site_settings.developer_email %}
                     · <a href="mailto:{{ site_settings.developer_email }}">Email</a>
                 {% endif %}
-                {% if site_settings.developer_whatsapp_url %}
+                {% if site_settings.developer_whatsapp_url and not site_settings.developer_name %}
                     · <a href="{{ site_settings.developer_whatsapp_url }}"
                          target="_blank"
                          rel="noopener noreferrer">WhatsApp</a>

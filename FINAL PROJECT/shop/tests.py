@@ -1,14 +1,19 @@
 import json
 import os
+import tempfile
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from io import BytesIO
 from unittest.mock import Mock, patch
+from urllib.parse import unquote
 
 import requests
+from PIL import Image
 
 from django.contrib.auth import get_user_model
 from django.contrib.admin.sites import AdminSite
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core import mail
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -107,10 +112,27 @@ class CatalogTests(ShopTestCase):
 
         response = self.client.get(reverse("home"))
 
-        self.assertContains(response, "Developed by")
+        self.assertContains(response, "Built by")
         self.assertContains(response, "Example Developer")
         self.assertContains(response, "mailto:developer@example.com")
-        self.assertContains(response, "https://wa.me/2348012345678")
+        self.assertContains(
+            response,
+            "https://wa.me/2348012345678?text=Hello%2C%20I%20saw%20the%20website%20you%20built",
+        )
+
+    def test_developer_whatsapp_accepts_a_full_wa_me_url(self):
+        self.site_settings.developer_name = "Example Developer"
+        self.site_settings.developer_whatsapp = (
+            "https://wa.me/2348012345678?text=Call%201234"
+        )
+        self.site_settings.save()
+
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(
+            response,
+            "https://wa.me/2348012345678?text=Hello%2C%20I%20saw%20the%20website%20you%20built",
+        )
 
     def test_search_empty_state_is_available_for_empty_catalog(self):
         Product.objects.all().delete()
@@ -167,8 +189,70 @@ class CatalogTests(ShopTestCase):
                 for field in options["fields"]
             ],
         )
+        self.assertIn(
+            "logo",
+            [
+                field
+                for _, options in settings_admin.fieldsets
+                for field in options["fields"]
+            ],
+        )
         social_admin = admin.site._registry[SocialMediaLink]
         self.assertIn("footer", social_admin.fieldsets[0][0].lower())
+
+    def test_logo_replaces_header_business_name(self):
+        image_buffer = BytesIO()
+        Image.new("RGB", (4, 4), "white").save(image_buffer, format="PNG")
+        self.site_settings.logo = SimpleUploadedFile(
+            "brand.png",
+            image_buffer.getvalue(),
+            content_type="image/png",
+        )
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                self.site_settings.save()
+                response = self.client.get(reverse("home"))
+
+        self.assertContains(response, self.site_settings.logo.url)
+        header = response.content.decode().split("<header>", 1)[1].split(
+            "</header>",
+            1,
+        )[0]
+        heading = header.split("<h1", 1)[1].split("</h1>", 1)[0]
+        self.assertIn('class="brand-logo"', heading)
+        self.assertNotIn(">ANNELSA LUXURY<", heading)
+
+    def test_product_and_logo_uploads_are_resized_and_compressed(self):
+        image_buffer = BytesIO()
+        Image.effect_noise((2400, 1800), 100).convert("RGB").save(
+            image_buffer,
+            format="PNG",
+        )
+        upload = image_buffer.getvalue()
+
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                self.site_settings.logo = SimpleUploadedFile(
+                    "large-logo.png",
+                    upload,
+                    content_type="image/png",
+                )
+                self.site_settings.save()
+                product_image = self.product.images.create(
+                    image=SimpleUploadedFile(
+                        "large-product.png",
+                        upload,
+                        content_type="image/png",
+                    )
+                )
+
+                for saved_image in (
+                    self.site_settings.logo,
+                    product_image.image,
+                ):
+                    with Image.open(saved_image) as compressed:
+                        self.assertLessEqual(max(compressed.size), 1600)
+                    self.assertLessEqual(saved_image.size, 300 * 1024)
 
 
 class OrderPickupVerificationTests(ShopTestCase):
@@ -221,6 +305,11 @@ class CheckoutTests(ShopTestCase):
         self.assertIn("wa.me/2348012345678", data["redirect_url"])
         self.assertIn("Order%20ID", data["redirect_url"])
         self.assertIn("Test%20Buyer", data["redirect_url"])
+        message = unquote(data["redirect_url"].split("?text=", 1)[1])
+        self.assertIn("Phone: +2348012345678", message)
+        self.assertIn("Address: 10 Test Street", message)
+        self.assertIn("Leather Bag x 2 @ ₦1,250.00 each", message)
+        self.assertIn("TOTAL: ₦2,500.00", message)
 
         order = Order.objects.get(pk=data["order_id"])
         item = order.items.get()
@@ -247,7 +336,7 @@ class CheckoutTests(ShopTestCase):
         )
         self.assertIn("Test%20Buyer", data["redirect_url"])
         self.assertIn("Leather%20Bag", data["redirect_url"])
-        self.assertIn("NGN%202%2C500.00", data["redirect_url"])
+        self.assertIn("TOTAL: ₦2,500.00", unquote(data["redirect_url"]))
 
     def test_checkout_rejects_disabled_contact_channel(self):
         self.site_settings.telegram_enabled = False

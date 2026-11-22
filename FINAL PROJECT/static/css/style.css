@@ -254,6 +254,13 @@ header{
     text-transform:uppercase;
 }
 
+.brand-logo{
+    display:block;
+    max-width:180px;
+    max-height:64px;
+    object-fit:contain;
+}
+
 .brand p{
     font-size:11px;
     letter-spacing:5px;

@@ -1196,14 +1196,14 @@ def build_order_message(
         subtotal = item["subtotal"]
 
         lines.append(
-            f"- {product.name} x {quantity} = "
-            f"NGN {subtotal:,.2f}"
+            f"- {product.name} x {quantity} @ "
+            f"₦{product.price:,.2f} each = ₦{subtotal:,.2f}"
         )
 
     lines.extend(
         [
             "",
-            f"TOTAL: NGN {order.total:,.2f}",
+            f"TOTAL: ₦{order.total:,.2f}",
         ]
     )
 

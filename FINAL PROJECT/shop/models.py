@@ -1,8 +1,70 @@
 
 import secrets
+from io import BytesIO
+from pathlib import Path
+from urllib.parse import quote, urlsplit
 
+from PIL import Image, ImageOps
+
+from django.core.files.base import ContentFile
 from django.db import models
 from django.conf import settings
+
+
+MAX_IMAGE_SIZE = 300 * 1024
+MAX_IMAGE_DIMENSION = 1600
+
+
+def _compress_uploaded_image(uploaded_image):
+    if uploaded_image is None or getattr(uploaded_image, "_committed", True):
+        return uploaded_image
+
+    with Image.open(uploaded_image) as source:
+        image = ImageOps.exif_transpose(source)
+        image.load()
+        has_transparency = (
+            image.mode in {"RGBA", "LA"}
+            or "transparency" in image.info
+        )
+        if has_transparency:
+            image = image.convert("RGBA")
+            image_format = "PNG"
+            extension = ".png"
+        else:
+            image = image.convert("RGB")
+            image_format = "JPEG"
+            extension = ".jpg"
+
+        image.thumbnail(
+            (MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION),
+            Image.Resampling.LANCZOS,
+        )
+        quality = 85
+        while True:
+            buffer = BytesIO()
+            options = {"optimize": True}
+            if image_format == "JPEG":
+                options.update(quality=quality, progressive=True)
+            image.save(buffer, format=image_format, **options)
+
+            if buffer.tell() <= MAX_IMAGE_SIZE:
+                break
+
+            if image_format == "JPEG" and quality > 45:
+                quality -= 10
+                continue
+
+            width, height = image.size
+            if width == 1 and height == 1:
+                break
+            image = image.resize(
+                (max(1, int(width * 0.8)), max(1, int(height * 0.8))),
+                Image.Resampling.LANCZOS,
+            )
+            quality = 85
+
+    name = f"{Path(uploaded_image.name).stem}{extension}"
+    return ContentFile(buffer.getvalue(), name=name)
 
 
 class Category(models.Model):
@@ -58,6 +120,11 @@ class ProductImage(models.Model):
 
     class Meta:
         ordering = ["display_order", "id"]
+
+    def save(self, *args, **kwargs):
+        if self.image:
+            self.image = _compress_uploaded_image(self.image)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.product.name} - Image {self.display_order}"
@@ -244,6 +311,10 @@ class SiteSettings(models.Model):
         max_length=200,
         default="ANNELSA LUXURY"
     )
+    logo = models.ImageField(
+        upload_to="site/",
+        blank=True,
+    )
     tagline = models.CharField(
         max_length=255,
         blank=True,
@@ -301,14 +372,25 @@ class SiteSettings(models.Model):
     def __str__(self):
         return self.business_name
 
+    def save(self, *args, **kwargs):
+        if self.logo:
+            self.logo = _compress_uploaded_image(self.logo)
+        super().save(*args, **kwargs)
+
     @property
     def developer_whatsapp_url(self):
-        digits = "".join(
-            character
-            for character in self.developer_whatsapp
-            if character.isdigit()
-        )
-        return f"https://wa.me/{digits}" if digits else ""
+        value = self.developer_whatsapp.strip()
+        if value.lower().startswith(("http://", "https://")):
+            parsed_url = urlsplit(value)
+            if parsed_url.hostname not in {"wa.me", "www.wa.me"}:
+                return ""
+            value = parsed_url.path.strip("/").split("/", 1)[0]
+
+        digits = "".join(character for character in value if character.isdigit())
+        if not digits:
+            return ""
+        greeting = "Hello, I saw the website you built"
+        return f"https://wa.me/{digits}?text={quote(greeting)}"
 
     @property
     def whatsapp_url(self):

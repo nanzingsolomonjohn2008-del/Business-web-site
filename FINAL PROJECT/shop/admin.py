@@ -176,7 +176,7 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         "updated_at",
     )
     fieldsets = (
-        ("Site details", {"fields": ("business_name", "tagline")}),
+        ("Site details", {"fields": ("business_name", "tagline", "logo")}),
         (
             "Developer credit",
             {
@@ -187,8 +187,9 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                     "developer_whatsapp",
                 ),
                 "description": (
-                    "Configure the developer credit and contact links shown "
-                    "at the end of the website."
+                    "Enter the developer name and a WhatsApp phone number "
+                    "in 234... format or a full wa.me URL. The name links to "
+                    "WhatsApp at the end of the website."
                 ),
             },
         ),
