@@ -330,6 +330,11 @@ class SiteSettings(models.Model):
         blank=True
     )
 
+    instagram_url = models.URLField("Instagram URL", blank=True)
+    tiktok_url = models.URLField("TikTok URL", blank=True)
+    facebook_url = models.URLField("Facebook URL", blank=True)
+    twitter_url = models.URLField("X / Twitter URL", blank=True)
+
     whatsapp_enabled = models.BooleanField(default=True)
     telegram_enabled = models.BooleanField(default=True)
 

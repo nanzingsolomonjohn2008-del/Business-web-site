@@ -178,6 +178,21 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Site details", {"fields": ("business_name", "tagline", "logo")}),
         (
+            "Social media",
+            {
+                "fields": (
+                    "instagram_url",
+                    "tiktok_url",
+                    "facebook_url",
+                    "twitter_url",
+                ),
+                "description": (
+                    "Enter the public profile URL for each platform. "
+                    "Only configured links appear in the website footer."
+                ),
+            },
+        ),
+        (
             "Developer credit",
             {
                 "fields": (

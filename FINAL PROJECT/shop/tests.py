@@ -103,14 +103,34 @@ class CatalogTests(ShopTestCase):
         self.assertContains(response, social_link.url)
         self.assertContains(response, social_link.name)
 
+    def test_footer_shows_only_configured_site_social_links(self):
+        self.site_settings.instagram_url = "https://instagram.com/example"
+        self.site_settings.tiktok_url = "https://tiktok.com/@example"
+        self.site_settings.twitter_url = "https://x.com/example"
+        self.site_settings.save()
+
+        response = self.client.get(reverse("home"))
+
+        for url in (
+            self.site_settings.instagram_url,
+            self.site_settings.tiktok_url,
+            self.site_settings.twitter_url,
+        ):
+            self.assertContains(response, f'href="{url}"')
+        self.assertContains(response, 'target="_blank"')
+        self.assertContains(response, 'rel="noopener"')
+        self.assertNotContains(response, "Facebook")
+
     def test_footer_shows_configured_developer_links(self):
         self.site_settings.developer_name = "Example Developer"
         self.site_settings.developer_url = "https://example.com"
         self.site_settings.developer_email = "developer@example.com"
         self.site_settings.developer_whatsapp = "+234 801 234 5678"
+        self.site_settings.instagram_url = "https://instagram.com/example"
         self.site_settings.save()
 
         response = self.client.get(reverse("home"))
+        page = response.content.decode()
 
         self.assertContains(response, "Built by")
         self.assertContains(response, "Example Developer")
@@ -118,6 +138,14 @@ class CatalogTests(ShopTestCase):
         self.assertContains(
             response,
             "https://wa.me/2348012345678?text=Hello%2C%20I%20saw%20the%20website%20you%20built",
+        )
+        self.assertLess(
+            page.index(self.site_settings.instagram_url),
+            page.index('class="copyright"'),
+        )
+        self.assertLess(
+            page.index('class="copyright"'),
+            page.index('class="developer-credit"'),
         )
 
     def test_developer_whatsapp_accepts_a_full_wa_me_url(self):
@@ -197,6 +225,18 @@ class CatalogTests(ShopTestCase):
                 for field in options["fields"]
             ],
         )
+        settings_fields = [
+            field
+            for _, options in settings_admin.fieldsets
+            for field in options["fields"]
+        ]
+        for field in (
+            "instagram_url",
+            "tiktok_url",
+            "facebook_url",
+            "twitter_url",
+        ):
+            self.assertIn(field, settings_fields)
         social_admin = admin.site._registry[SocialMediaLink]
         self.assertIn("footer", social_admin.fieldsets[0][0].lower())
 
