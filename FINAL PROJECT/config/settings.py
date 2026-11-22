@@ -14,6 +14,7 @@ import os
 import secrets
 from pathlib import Path
 
+import dj_database_url
 from dotenv import load_dotenv
 
 from django.core.exceptions import ImproperlyConfigured
@@ -51,6 +52,8 @@ ALLOWED_HOSTS = [
     ).split(",")
     if host.strip()
 ]
+if ".pythonanywhere.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".pythonanywhere.com")
 LOGIN_URL = "account_login"
 LOGIN_REDIRECT_URL = "account_orders"
 CSRF_TRUSTED_ORIGINS = [
@@ -81,6 +84,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -126,32 +130,25 @@ SOCIALACCOUNT_PROVIDERS = {
 }
 
 
-DATABASE_ENGINE = os.environ.get(
-    "DATABASE_ENGINE",
-    "django.db.backends.sqlite3",
-).strip()
-if DATABASE_ENGINE == "django.db.backends.postgresql":
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+if DATABASE_URL:
     DATABASES = {
-        "default": {
-            "ENGINE": DATABASE_ENGINE,
-            "NAME": os.environ.get("DATABASE_NAME", ""),
-            "USER": os.environ.get("DATABASE_USER", ""),
-            "PASSWORD": os.environ.get("DATABASE_PASSWORD", ""),
-            "HOST": os.environ.get("DATABASE_HOST", ""),
-            "PORT": os.environ.get("DATABASE_PORT", "5432"),
-            "CONN_MAX_AGE": 60,
-            "OPTIONS": {"sslmode": os.environ.get("DATABASE_SSLMODE", "require")},
-        }
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+            ssl_require=not DEBUG,
+        )
     }
-elif DATABASE_ENGINE == "django.db.backends.sqlite3":
+else:
     if not DEBUG:
         raise ImproperlyConfigured(
-            "Production requires PostgreSQL; SQLite is only for development."
+            "DATABASE_URL is required in production; SQLite is only for development."
         )
     database_name = Path(os.environ.get("DATABASE_NAME", "db.sqlite3"))
     DATABASES = {
         "default": {
-            "ENGINE": DATABASE_ENGINE,
+            "ENGINE": "django.db.backends.sqlite3",
             "NAME": str(
                 database_name
                 if database_name.is_absolute()
@@ -159,10 +156,6 @@ elif DATABASE_ENGINE == "django.db.backends.sqlite3":
             ),
         }
     }
-else:
-    raise ImproperlyConfigured(
-        f"Unsupported DATABASE_ENGINE: {DATABASE_ENGINE}"
-    )
 
 
 # Password validation
@@ -205,6 +198,15 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 EMAIL_BACKEND = os.environ.get(
     "DJANGO_EMAIL_BACKEND",
