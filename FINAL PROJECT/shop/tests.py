@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import Mock, patch
 
@@ -8,8 +9,10 @@ import requests
 
 from django.contrib.auth import get_user_model
 from django.contrib.admin.sites import AdminSite
-from django.test import Client, RequestFactory, TestCase
+from django.core import mail
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from .admin import OrderAdmin
 from .models import (
@@ -18,6 +21,7 @@ from .models import (
     Order,
     OrderItem,
     PaymentTransaction,
+    PasswordResetCode,
     Product,
     Review,
     SiteSettings,
@@ -93,6 +97,20 @@ class CatalogTests(ShopTestCase):
 
         self.assertContains(response, social_link.url)
         self.assertContains(response, social_link.name)
+
+    def test_footer_shows_configured_developer_links(self):
+        self.site_settings.developer_name = "Example Developer"
+        self.site_settings.developer_url = "https://example.com"
+        self.site_settings.developer_email = "developer@example.com"
+        self.site_settings.developer_whatsapp = "+234 801 234 5678"
+        self.site_settings.save()
+
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(response, "Developed by")
+        self.assertContains(response, "Example Developer")
+        self.assertContains(response, "mailto:developer@example.com")
+        self.assertContains(response, "https://wa.me/2348012345678")
 
     def test_search_empty_state_is_available_for_empty_catalog(self):
         Product.objects.all().delete()
@@ -380,6 +398,7 @@ class CheckoutTests(ShopTestCase):
         )
         payment = PaymentTransaction.objects.get()
         self.assertEqual(payment.amount, Decimal("2800.00"))
+        self.assertTrue(payment.paystack_test_mode)
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock, 8)
 
@@ -472,6 +491,41 @@ class CheckoutTests(ShopTestCase):
         self.assertEqual(order.status, "cancelled")
         self.assertEqual(self.product.stock, 10)
 
+    @patch.dict(
+        os.environ,
+        {
+            "PAYSTACK_TEST_SECRET_KEY": "sk_test_example",
+            "PAYSTACK_LIVE_SECRET_KEY": "sk_live_example",
+        },
+    )
+    @patch("shop.views.requests.get")
+    def test_callback_uses_the_transaction_initialization_mode(
+        self,
+        get_request,
+    ):
+        order, payment = self.create_pending_paystack_order()
+        self.site_settings.paystack_test_mode = False
+        self.site_settings.save(update_fields=["paystack_test_mode"])
+        get_request.return_value = self.gateway_verification(
+            payment,
+            status="success",
+        )
+
+        response = self.client.get(
+            reverse("paystack_callback"),
+            {"reference": payment.reference},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            get_request.call_args.kwargs["headers"]["Authorization"],
+            "Bearer sk_test_example",
+        )
+        payment.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(payment.status, "success")
+        self.assertEqual(order.status, "confirmed")
+
     def create_pending_paystack_order(self):
         order = Order.objects.create(
             customer=Customer.objects.create(
@@ -552,36 +606,131 @@ class ReviewTests(ShopTestCase):
 
 
 class AccountTests(ShopTestCase):
-    @patch.dict(
-        os.environ,
-        {
-            "FACEBOOK_CLIENT_ID": "test-facebook-client",
-            "FACEBOOK_CLIENT_SECRET": "test-facebook-secret",
-        },
-    )
-    def test_login_form_and_configured_facebook_provider_link_render(self):
+    def test_login_form_renders_without_social_sign_in_options(self):
         response = self.client.get(reverse("account_login"))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'type="submit">Sign In</button>')
-        self.assertContains(response, 'href="/accounts/facebook/login/"')
-        self.assertNotContains(response, "Facebook sign-in is not configured")
+        self.assertContains(response, reverse("account_password_reset"))
+        self.assertNotContains(response, "Continue with Google")
+        self.assertNotContains(response, "Continue with Facebook")
 
-    def test_account_pages_render_brand_and_disabled_social_options(self):
+    def test_account_pages_render_without_social_sign_in_options(self):
         login_response = self.client.get(reverse("account_login"))
         self.assertContains(login_response, "AS")
         self.assertContains(login_response, "ANNELSA LUXURY")
-        self.assertContains(login_response, "Continue with Google")
-        self.assertContains(login_response, "Continue with Facebook")
-        self.assertContains(login_response, "disabled")
+        self.assertNotContains(login_response, "Continue with Google")
+        self.assertNotContains(login_response, "Continue with Facebook")
 
         register_response = self.client.get(reverse("account_register"))
         self.assertContains(register_response, "AS")
         self.assertContains(register_response, "Create your account")
         self.assertContains(register_response, reverse("account_login"))
-        self.assertContains(register_response, "Continue with Google")
-        self.assertContains(register_response, "Continue with Facebook")
-        self.assertContains(register_response, "disabled")
+        self.assertNotContains(register_response, "Continue with Google")
+        self.assertNotContains(register_response, "Continue with Facebook")
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_password_reset_code_resets_password_and_allows_login(self):
+        user = User.objects.create_user(
+            username="reset@example.com",
+            email="reset@example.com",
+            password="OriginalPassword-123!",
+        )
+
+        response = self.client.post(
+            reverse("account_password_reset"),
+            {"email": user.email},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "If an account exists for that address")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [user.email])
+
+        code = mail.outbox[0].body.split("code is ", 1)[1][:6]
+        reset_record = PasswordResetCode.objects.get(user=user)
+        self.assertNotEqual(reset_record.code_hash, code)
+
+        response = self.client.post(
+            reverse("account_password_reset_confirm"),
+            {
+                "email": user.email,
+                "code": code,
+                "new_password1": "FreshPassword-981!",
+                "new_password2": "FreshPassword-981!",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Password updated")
+        self.assertFalse(PasswordResetCode.objects.filter(user=user).exists())
+        user.refresh_from_db()
+        self.assertTrue(user.check_password("FreshPassword-981!"))
+
+        login_response = self.client.post(
+            reverse("account_login"),
+            {"email": user.email, "password": "FreshPassword-981!"},
+        )
+        self.assertEqual(login_response.json()["status"], "success")
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_password_reset_does_not_disclose_unknown_email(self):
+        response = self.client.post(
+            reverse("account_password_reset"),
+            {"email": "unknown@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "If an account exists for that address")
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_password_reset_code_expires_and_locks_after_five_wrong_attempts(self):
+        user = User.objects.create_user(
+            username="attempts@example.com",
+            email="attempts@example.com",
+            password="OriginalPassword-123!",
+        )
+        self.client.post(
+            reverse("account_password_reset"),
+            {"email": user.email},
+        )
+        code = mail.outbox[0].body.split("code is ", 1)[1][:6]
+
+        for _ in range(5):
+            response = self.client.post(
+                reverse("account_password_reset_confirm"),
+                {"email": user.email, "code": "invalid"},
+            )
+            self.assertEqual(response.status_code, 400)
+
+        response = self.client.post(
+            reverse("account_password_reset_confirm"),
+            {
+                "email": user.email,
+                "code": code,
+                "new_password1": "FreshPassword-981!",
+                "new_password2": "FreshPassword-981!",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        user.refresh_from_db()
+        self.assertFalse(user.check_password("FreshPassword-981!"))
+
+        reset_record = PasswordResetCode.objects.get(user=user)
+        reset_record.attempts = 0
+        reset_record.expires_at = timezone.now() - timedelta(seconds=1)
+        reset_record.save(update_fields=["attempts", "expires_at"])
+        response = self.client.post(
+            reverse("account_password_reset_confirm"),
+            {
+                "email": user.email,
+                "code": code,
+                "new_password1": "FreshPassword-981!",
+                "new_password2": "FreshPassword-981!",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        user.refresh_from_db()
+        self.assertFalse(user.check_password("FreshPassword-981!"))
 
     def test_registration_rejects_invalid_email_and_password_mismatch(self):
         invalid_email_response = self.client.post(
@@ -619,6 +768,8 @@ class AccountTests(ShopTestCase):
         )
         self.assertRedirects(response, reverse("account_orders"))
         customer_user = User.objects.get(email="customer@example.com")
+        self.assertNotEqual(customer_user.password, "SecurePassword-123!")
+        self.assertTrue(customer_user.check_password("SecurePassword-123!"))
         customer = Customer.objects.create(
             user=customer_user,
             name="Customer",

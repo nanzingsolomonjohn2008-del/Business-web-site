@@ -323,7 +323,7 @@ function applyFilters() {
 
     if (emptyState) {
         emptyState.hidden =
-            (query.length === 0 && activeCategory === "all") ||
+            query.length === 0 ||
             visibleProductCount > 0;
     }
 

@@ -687,6 +687,14 @@ footer{
     color:#facc15;
 }
 
+.developer-credit a{
+    color:#cbd5e1;
+}
+
+.developer-credit a:hover{
+    color:#facc15;
+}
+
 .copyright{
     font-size:12px;
     color:#475569;
@@ -974,6 +982,10 @@ footer{
     grid-column:1 / -1;
     text-align:center;
     padding:60px 20px;
+}
+
+.empty-products[hidden]{
+    display:none;
 }
 
 
@@ -1958,6 +1970,197 @@ a:focus-visible{
 .status-error{
     color:#fecaca;
     background:rgba(127,29,29,0.4);
+}
+
+#writeReviewModal{
+    padding:20px;
+    background:rgba(0,0,0,0.78);
+    backdrop-filter:blur(12px);
+}
+
+#writeReviewModal .review-card{
+    width:min(100%,520px);
+    max-width:520px;
+    max-height:90vh;
+    overflow-y:auto;
+    padding:40px 36px;
+    border:1px solid rgba(212,175,55,0.38);
+    border-top:2px solid #d4af37;
+    border-radius:16px;
+    background:
+        radial-gradient(ellipse at 50% 0,rgba(212,175,55,0.08),transparent 55%),
+        #101010;
+    box-shadow:0 18px 45px rgba(0,0,0,0.5);
+    text-align:left;
+}
+
+#writeReviewModal .review-eyebrow{
+    display:block;
+    margin-bottom:8px;
+    color:#d4af37;
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+}
+
+#writeReviewModal .review-title{
+    margin:0 0 8px;
+    color:#f7e7a1;
+    font-family:Georgia,"Times New Roman",serif;
+    font-size:34px;
+    font-weight:700;
+    line-height:1.15;
+}
+
+#writeReviewModal .review-subtitle{
+    margin:0 0 28px;
+    color:#b8b8b8;
+    font-size:13px;
+    line-height:1.5;
+}
+
+#writeReviewModal .review-subtitle strong{
+    color:#f4f0e5;
+    font-weight:600;
+    letter-spacing:0.03em;
+}
+
+#writeReviewModal .review-form-group{
+    margin-bottom:20px;
+}
+
+#writeReviewModal .review-form-group label{
+    display:block;
+    margin-bottom:8px;
+    color:#f4f0e5;
+    font-size:13px;
+    font-weight:600;
+}
+
+#writeReviewModal .review-form select,
+#writeReviewModal .review-form input[type="text"],
+#writeReviewModal .review-form textarea{
+    width:100%;
+    padding:12px 14px;
+    border:1px solid rgba(212,175,55,0.3);
+    border-radius:10px;
+    background:#171717;
+    color:#f4f0e5;
+    font:inherit;
+    font-size:14px;
+    transition:border-color 0.2s ease,box-shadow 0.2s ease,background-color 0.2s ease;
+}
+
+#writeReviewModal .review-form select{
+    min-height:46px;
+    padding-right:40px;
+    cursor:pointer;
+}
+
+#writeReviewModal .review-form textarea{
+    min-height:115px;
+    line-height:1.5;
+    resize:vertical;
+}
+
+#writeReviewModal .review-form select:focus,
+#writeReviewModal .review-form input[type="text"]:focus,
+#writeReviewModal .review-form textarea:focus{
+    outline:none;
+    background:#1d1d1d;
+    border-color:#d4af37;
+    box-shadow:0 0 0 4px rgba(212,175,55,0.2);
+}
+
+#writeReviewModal .review-form select option{
+    background:#171717;
+    color:#f4f0e5;
+}
+
+#writeReviewModal .review-form input::placeholder,
+#writeReviewModal .review-form textarea::placeholder{
+    color:#999;
+}
+
+#writeReviewModal .review-form select:focus-visible,
+#writeReviewModal .review-form input[type="text"]:focus-visible,
+#writeReviewModal .review-form textarea:focus-visible,
+#writeReviewModal .review-button-group button:focus-visible{
+    outline:2px solid #f7e7a1;
+    outline-offset:3px;
+}
+
+#writeReviewModal .review-button-group{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-top:28px;
+}
+
+#writeReviewModal .review-submit,
+#writeReviewModal .review-cancel{
+    min-height:48px;
+    padding:14px 20px;
+    border-radius:10px;
+    font:inherit;
+    font-size:14px;
+    cursor:pointer;
+    transition:background-color 0.2s ease,color 0.2s ease,border-color 0.2s ease,transform 0.1s ease;
+}
+
+#writeReviewModal .review-submit{
+    flex:1;
+    border:1px solid #d4af37;
+    background:#d4af37;
+    color:#080808;
+    font-weight:700;
+}
+
+#writeReviewModal .review-submit:hover{
+    background:#f7e7a1;
+    border-color:#f7e7a1;
+}
+
+#writeReviewModal .review-submit:active{
+    transform:scale(0.99);
+}
+
+#writeReviewModal .review-cancel{
+    border:1px solid rgba(212,175,55,0.3);
+    background:transparent;
+    color:#b8b8b8;
+    font-weight:500;
+}
+
+#writeReviewModal .review-cancel:hover{
+    border-color:#d4af37;
+    color:#f7e7a1;
+    background:rgba(212,175,55,0.06);
+}
+
+@media(max-width:480px){
+    #writeReviewModal{
+        padding:12px;
+    }
+
+    #writeReviewModal .review-card{
+        max-height:92vh;
+        padding:28px 20px;
+    }
+
+    #writeReviewModal .review-title{
+        font-size:30px;
+    }
+
+    #writeReviewModal .review-button-group{
+        flex-direction:column;
+    }
+
+    #writeReviewModal .review-submit,
+    #writeReviewModal .review-cancel{
+        width:100%;
+    }
 }
 
 .account-page{

@@ -3,7 +3,10 @@ import json
 import logging
 import os
 import re
+import secrets
+import smtplib
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from urllib.parse import quote
 
@@ -12,6 +15,9 @@ import requests
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import SetPasswordForm
+from django.contrib.auth.hashers import check_password, make_password
+from django.core.mail import send_mail
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
@@ -35,8 +41,9 @@ from .models import (
     Order,
     OrderItem,
     PaymentTransaction,
+    PasswordResetCode,
 )
-from .forms import AccountCreationForm
+from .forms import AccountCreationForm, PasswordResetRequestForm
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -56,10 +63,12 @@ def _restore_order_stock(order):
         )
 
 
-def _paystack_secret_key(site_settings):
+def _paystack_secret_key(site_settings, test_mode=None):
+    if test_mode is None:
+        test_mode = site_settings.paystack_test_mode
     variable = (
         "PAYSTACK_TEST_SECRET_KEY"
-        if site_settings.paystack_test_mode
+        if test_mode
         else "PAYSTACK_LIVE_SECRET_KEY"
     )
     return os.environ.get(variable, "").strip()
@@ -507,6 +516,7 @@ def create_order(request):
                     reference=reference,
                     amount=total,
                     currency=site_settings.currency,
+                    paystack_test_mode=site_settings.paystack_test_mode,
                     status="pending",
                 )
 
@@ -764,16 +774,7 @@ def submit_review(request):
 @require_http_methods(["GET", "POST"])
 def account_login(request):
     if request.method == "GET":
-        return render(
-            request,
-            "shop/account_login.html",
-            {
-                "facebook_oauth_configured": bool(
-                    os.environ.get("FACEBOOK_CLIENT_ID", "").strip()
-                    and os.environ.get("FACEBOOK_CLIENT_SECRET", "").strip()
-                ),
-            },
-        )
+        return render(request, "shop/account_login.html")
 
     email_or_username = request.POST.get("email", "").strip()
     password = request.POST.get("password", "")
@@ -824,6 +825,157 @@ def account_register(request):
     return render(request, "shop/account_register.html", {"form": form})
 
 
+@require_http_methods(["GET", "POST"])
+def account_password_reset(request):
+    form = PasswordResetRequestForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        email = form.cleaned_data["email"].strip().lower()
+        reset_code = None
+        code = None
+        with transaction.atomic():
+            user = (
+                User.objects
+                .select_for_update()
+                .filter(email__iexact=email, is_active=True)
+                .first()
+            )
+            if user:
+                now = timezone.now()
+                reset_code = PasswordResetCode.objects.filter(user=user).first()
+                cooldown = timedelta(minutes=1)
+                if not reset_code or now - reset_code.created_at >= cooldown:
+                    code = f"{secrets.randbelow(1_000_000):06d}"
+                    reset_code, _ = PasswordResetCode.objects.update_or_create(
+                        user=user,
+                        defaults={
+                            "code_hash": make_password(code),
+                            "created_at": now,
+                            "expires_at": now + timedelta(minutes=10),
+                            "attempts": 0,
+                        },
+                    )
+
+        if user and reset_code and code:
+            try:
+                sent_count = send_mail(
+                    "Your password reset confirmation code",
+                    (
+                        f"Your password reset code is {code}. "
+                        "It expires in 10 minutes. If you did not request "
+                        "a password reset, you can ignore this email."
+                    ),
+                    None,
+                    [user.email],
+                    fail_silently=False,
+                )
+            except (OSError, smtplib.SMTPException):
+                logger.exception(
+                    "Password reset email delivery failed for user_id=%s",
+                    user.pk,
+                )
+                reset_code.delete()
+            else:
+                if sent_count != 1:
+                    logger.error(
+                        "Password reset email was not sent for user_id=%s",
+                        user.pk,
+                    )
+                    reset_code.delete()
+
+        return render(
+            request,
+            "shop/account_password_reset_confirm.html",
+            {"email": email, "password_form": None},
+        )
+
+    return render(
+        request,
+        "shop/account_password_reset.html",
+        {"form": form},
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def account_password_reset_confirm(request):
+    email = (
+        request.POST.get("email", "")
+        if request.method == "POST"
+        else request.GET.get("email", "")
+    ).strip().lower()
+    context = {
+        "email": email,
+        "password_form": None,
+        "error": "",
+    }
+
+    if request.method == "GET":
+        return render(
+            request,
+            "shop/account_password_reset_confirm.html",
+            context,
+        )
+
+    code = request.POST.get("code", "").strip()
+    with transaction.atomic():
+        reset_code = (
+            PasswordResetCode.objects
+            .select_for_update()
+            .filter(user__email__iexact=email, user__is_active=True)
+            .first()
+        )
+        now = timezone.now()
+        if (
+            not reset_code
+            or reset_code.expires_at <= now
+            or reset_code.attempts >= 5
+        ):
+            context["error"] = (
+                "That code is invalid or expired. Request a new code."
+            )
+            return render(
+                request,
+                "shop/account_password_reset_confirm.html",
+                context,
+                status=400,
+            )
+
+        if not code.isdecimal() or len(code) != 6 or not check_password(
+            code,
+            reset_code.code_hash,
+        ):
+            reset_code.attempts += 1
+            reset_code.save(update_fields=["attempts"])
+            context["error"] = (
+                "That code is invalid or expired. Request a new code."
+            )
+            return render(
+                request,
+                "shop/account_password_reset_confirm.html",
+                context,
+                status=400,
+            )
+
+        password_form = SetPasswordForm(reset_code.user, request.POST)
+        context["password_form"] = password_form
+        if not password_form.is_valid():
+            return render(
+                request,
+                "shop/account_password_reset_confirm.html",
+                context,
+                status=400,
+            )
+
+        password_form.save()
+        reset_code.delete()
+        context["complete"] = True
+
+    return render(
+        request,
+        "shop/account_password_reset_confirm.html",
+        context,
+    )
+
+
 @login_required
 def account_orders(request):
     customer = Customer.objects.filter(user=request.user).first()
@@ -860,22 +1012,6 @@ def paystack_callback(request):
             payment_error="No Paystack payment reference was provided.",
         )
 
-    site_settings = SiteSettings.objects.first()
-    secret_key = (
-        _paystack_secret_key(site_settings)
-        if site_settings
-        else ""
-    )
-
-    if not secret_key:
-        return _payment_result(
-            request,
-            payment_error=(
-                "The Paystack secret key for the selected mode "
-                "is not configured."
-            ),
-        )
-
     payment_transaction = (
         PaymentTransaction.objects
         .select_related(
@@ -903,6 +1039,25 @@ def paystack_callback(request):
         return _payment_result(
             request,
             payment_error="This payment was already marked unsuccessful.",
+        )
+
+    site_settings = SiteSettings.objects.first()
+    secret_key = (
+        _paystack_secret_key(
+            site_settings,
+            payment_transaction.paystack_test_mode,
+        )
+        if site_settings
+        else ""
+    )
+
+    if not secret_key:
+        return _payment_result(
+            request,
+            payment_error=(
+                "The Paystack secret key for the selected mode "
+                "is not configured."
+            ),
         )
 
     headers = {

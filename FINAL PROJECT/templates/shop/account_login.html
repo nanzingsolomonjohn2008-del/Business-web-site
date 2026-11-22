@@ -1,4 +1,4 @@
-{% load static socialaccount %}
+{% load static %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -29,23 +29,9 @@
             <button class="auth-submit" type="submit">Sign In</button>
             <p id="accountError" class="auth-error" role="alert" aria-live="polite"></p>
         </form>
-        <div class="auth-social" aria-label="Social sign-in options">
-            <div class="auth-social-divider"><span>OR CONTINUE WITH</span></div>
-            <button type="button" class="auth-social-button" disabled
-                    title="Google sign-in is not configured yet">Continue with Google</button>
-            {% if facebook_oauth_configured %}
-                <a class="auth-social-button auth-facebook-button"
-                   href="{% provider_login_url 'facebook' %}">
-                    Continue with Facebook
-                </a>
-            {% else %}
-                <button type="button" class="auth-social-button" disabled
-                        title="Facebook OAuth credentials are not configured">
-                    Continue with Facebook
-                </button>
-            {% endif %}
-            <p class="auth-social-note">Social sign-in is not configured yet.</p>
-        </div>
+        <p class="auth-switch">
+            <a href="{% url 'account_password_reset' %}">Forgot your password?</a>
+        </p>
         <p class="auth-switch">New to ANNELSA LUXURY? <a href="{% url 'account_register' %}">Create an account</a></p>
         <a class="auth-back-link" href="{% url 'home' %}">← Back to the store</a>
     </main>

@@ -10,6 +10,8 @@ from .views import (
     account_register,
     account_orders,
     account_logout,
+    account_password_reset,
+    account_password_reset_confirm,
     paystack_callback,
 )
 
@@ -44,6 +46,18 @@ urlpatterns = [
         "account/register/",
         account_register,
         name="account_register",
+    ),
+
+    path(
+        "account/password-reset/",
+        account_password_reset,
+        name="account_password_reset",
+    ),
+
+    path(
+        "account/password-reset/confirm/",
+        account_password_reset_confirm,
+        name="account_password_reset_confirm",
     ),
 
     path(

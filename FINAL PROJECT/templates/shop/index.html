@@ -503,6 +503,13 @@
 
             <div class="product-bottom">
 
+                <p class="price">
+
+                    ₦{{ product.price|floatformat:0 }}
+
+                </p>
+
+
                 <div class="product-actions" style="width: 100%;">
 
                     <button type="button"
@@ -529,13 +536,6 @@
                     </button>
 
                 </div>
-
-
-                <p class="price">
-
-                    ₦{{ product.price|floatformat:0 }}
-
-                </p>
 
             </div>
 
@@ -1126,83 +1126,58 @@
 
 <div id="writeReviewModal"
 
-     class="modal">
+     class="modal review-modal">
 
 
-    <div class="modal-content">
+    <div class="modal-content review-card">
 
-        <h2>
+        <span class="review-eyebrow">YOUR FEEDBACK</span>
+        <h2 class="review-title">Write a Review</h2>
+        <p class="review-subtitle">Share your thoughts on this product.</p>
 
-            Write a Review
-
-        </h2>
-
-
-        <p>
-
-            Tell us about your experience with ANNELSA LUXURY.
-
-        </p>
-
-
-        <form id="reviewForm" class="feature-form"
+        <form id="reviewForm" class="review-form"
               method="post" action="{% url 'submit_review' %}">
             {% csrf_token %}
 
-            <select name="product_id" id="reviewProduct" required>
-                <option value="">Choose a product</option>
-                {% for product in products %}
-                    <option value="{{ product.id }}">{{ product.name }}</option>
-                {% endfor %}
-            </select>
+            <div class="review-form-group">
+                <label for="reviewProduct">Product</label>
+                <select name="product_id" id="reviewProduct" required>
+                    <option value="" disabled selected>Choose product</option>
+                    {% for product in products %}
+                        <option value="{{ product.id }}">{{ product.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
 
-            <select name="rating" id="reviewRating" required>
-                <option value="">Choose a rating</option>
-                <option value="5">5 stars</option>
-                <option value="4">4 stars</option>
-                <option value="3">3 stars</option>
-                <option value="2">2 stars</option>
-                <option value="1">1 star</option>
-            </select>
+            <div class="review-form-group">
+                <label for="reviewRating">Rating</label>
+                <select name="rating" id="reviewRating" required>
+                    <option value="" disabled selected>Choose rating</option>
+                    <option value="5">5 — Excellent</option>
+                    <option value="4">4 — Very good</option>
+                    <option value="3">3 — Good</option>
+                    <option value="2">2 — Fair</option>
+                    <option value="1">1 — Poor</option>
+                </select>
+            </div>
 
-            <input type="text"
+            <div class="review-form-group">
+                <label for="reviewName">Your name</label>
+                <input type="text" id="reviewName" name="name"
+                       placeholder="Your name" required>
+            </div>
 
-                   id="reviewName"
+            <div class="review-form-group">
+                <label for="reviewComment">Your review</label>
+                <textarea id="reviewComment" name="comment"
+                          placeholder="Your feedback..." required></textarea>
+            </div>
 
-                   name="name"
-
-                   placeholder="Your Name"
-
-                   required>
-
-
-            <textarea id="reviewComment"
-
-                      name="comment"
-
-                      placeholder="Write your review..."
-
-                      required></textarea>
-
-
-            <button type="submit"
-
-                    class="checkout-btn">
-
-                Submit Review
-
-            </button>
-
-
-            <button type="button"
-
-                    onclick="closeWriteReview()"
-
-                    class="close-btn">
-
-                Cancel
-
-            </button>
+            <div class="review-button-group">
+                <button type="submit" class="review-submit">Submit</button>
+                <button type="button" class="review-cancel"
+                        onclick="closeWriteReview()">Cancel</button>
+            </div>
 
         </form>
 
@@ -1500,9 +1475,9 @@
         <div class="footer-links">
 
 
-            {% if site_settings.whatsapp_number %}
+            {% if site_settings.whatsapp_url %}
 
-                <a href="https://wa.me/{{ site_settings.whatsapp_number }}"
+                <a href="{{ site_settings.whatsapp_url }}"
 
                    target="_blank">
 
@@ -1513,9 +1488,9 @@
             {% endif %}
 
 
-            {% if site_settings.telegram_username %}
+            {% if site_settings.telegram_url %}
 
-                <a href="https://t.me/{{ site_settings.telegram_username }}"
+                <a href="{{ site_settings.telegram_url }}"
 
                    target="_blank">
 
@@ -1552,6 +1527,31 @@
             All rights reserved.
 
         </p>
+
+        {% if site_settings.developer_name or site_settings.developer_url or site_settings.developer_email or site_settings.developer_whatsapp %}
+            <p class="developer-credit">
+                Developed by
+                {% if site_settings.developer_url %}
+                    <a href="{{ site_settings.developer_url }}"
+                       target="_blank"
+                       rel="noopener noreferrer">
+                        {{ site_settings.developer_name|default:"Developer" }}
+                    </a>
+                {% elif site_settings.developer_name %}
+                    {{ site_settings.developer_name }}
+                {% else %}
+                    Developer
+                {% endif %}
+                {% if site_settings.developer_email %}
+                    · <a href="mailto:{{ site_settings.developer_email }}">Email</a>
+                {% endif %}
+                {% if site_settings.developer_whatsapp_url %}
+                    · <a href="{{ site_settings.developer_whatsapp_url }}"
+                         target="_blank"
+                         rel="noopener noreferrer">WhatsApp</a>
+                {% endif %}
+            </p>
+        {% endif %}
 
     </div>
 

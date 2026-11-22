@@ -6,12 +6,14 @@ Use the existing Python environment on Windows:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-Copy-Item .env.example .env.local
+Copy-Item .env.example .env
 ```
 
-Django does not load `.env.local` automatically. Set the environment variables
-in the terminal or in your editor's run configuration. Keep `DJANGO_DEBUG=true`
-for local work. Generate a new local key with:
+The settings load `FINAL PROJECT/.env` automatically. Add your SMTP details
+there; for Gmail, use an app password rather than your regular account
+password. Keep `.env` private and do not commit it. The checked-in
+`.env.example` is only a template. Keep `DJANGO_DEBUG=true` for local work.
+Generate a local Django key with:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
@@ -35,7 +37,11 @@ The site is available at `http://127.0.0.1:8000/`; the Django admin is at
    `DJANGO_ALLOWED_HOSTS`, and the HTTPS `DJANGO_CSRF_TRUSTED_ORIGINS`.
 3. Set `DATABASE_ENGINE=django.db.backends.postgresql` and the database
    connection variables. Keep the database password outside source control.
-4. Configure SMTP environment variables if password-reset email is needed.
+4. Configure SMTP for password-reset codes. Set `DJANGO_EMAIL_BACKEND`,
+   `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`,
+   `EMAIL_USE_TLS`, and `DEFAULT_FROM_EMAIL` in the host environment. In local
+   debug mode, Django uses its console email backend by default; copy
+   `.env.example` to `.env` and configure SMTP to deliver codes to an inbox.
 5. In Django admin, open **Site & Order Settings** to choose either
    WhatsApp/Telegram ordering or Paystack. For contact ordering, enable and
    enter the channels customers can choose from. For Paystack, choose test

@@ -85,6 +85,18 @@ class Customer(models.Model):
         return self.name
 
 
+class PasswordResetCode(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="password_reset_code",
+    )
+    code_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField()
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+
+
 class Review(models.Model):
     product = models.ForeignKey(
         Product,
@@ -260,6 +272,26 @@ class SiteSettings(models.Model):
     paystack_test_mode = models.BooleanField(default=True)
     currency = models.CharField(max_length=10, default="NGN")
 
+    developer_name = models.CharField(
+        "Developer name",
+        max_length=150,
+        blank=True,
+        default="",
+    )
+    developer_url = models.URLField(
+        "Developer website",
+        blank=True,
+    )
+    developer_email = models.EmailField(
+        "Developer email",
+        blank=True,
+    )
+    developer_whatsapp = models.CharField(
+        "Developer WhatsApp number",
+        max_length=30,
+        blank=True,
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -268,6 +300,31 @@ class SiteSettings(models.Model):
 
     def __str__(self):
         return self.business_name
+
+    @property
+    def developer_whatsapp_url(self):
+        digits = "".join(
+            character
+            for character in self.developer_whatsapp
+            if character.isdigit()
+        )
+        return f"https://wa.me/{digits}" if digits else ""
+
+    @property
+    def whatsapp_url(self):
+        digits = "".join(
+            character
+            for character in self.whatsapp_number
+            if character.isdigit()
+        )
+        return f"https://wa.me/{digits}" if digits else ""
+
+    @property
+    def telegram_url(self):
+        username = self.telegram_username.strip().lstrip("@")
+        if not username:
+            return ""
+        return f"https://t.me/{username}"
 
 
 class SocialMediaLink(models.Model):
@@ -326,6 +383,11 @@ class PaymentTransaction(models.Model):
     currency = models.CharField(
         max_length=10,
         default="NGN"
+    )
+
+    paystack_test_mode = models.BooleanField(
+        default=True,
+        help_text="Whether this transaction was initialized in test mode.",
     )
 
     status = models.CharField(

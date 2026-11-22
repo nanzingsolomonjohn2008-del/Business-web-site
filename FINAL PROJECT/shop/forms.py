@@ -33,3 +33,7 @@ class AccountCreationForm(UserCreationForm):
             user.save()
             self.save_m2m()
         return user
+
+
+class PasswordResetRequestForm(forms.Form):
+    email = forms.EmailField(max_length=150)

@@ -178,6 +178,21 @@ class SiteSettingsAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Site details", {"fields": ("business_name", "tagline")}),
         (
+            "Developer credit",
+            {
+                "fields": (
+                    "developer_name",
+                    "developer_url",
+                    "developer_email",
+                    "developer_whatsapp",
+                ),
+                "description": (
+                    "Configure the developer credit and contact links shown "
+                    "at the end of the website."
+                ),
+            },
+        ),
+        (
             "WhatsApp / Telegram orders",
             {
                 "fields": (
